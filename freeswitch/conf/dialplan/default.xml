@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Vaciado intencionalmente: el contexto "default" real lo genera y sirve
+    NSPBX en caliente vía mod_xml_curl (backend GET /fs/dialplan), igual
+    que ya se hizo con directory/default.xml para las extensiones SIP.
+
+    Este archivo estático (el original de fábrica de FreeSWITCH) se
+    detectó mezclado en el mismo árbol que el dialplan dinámico — tenía,
+    por ejemplo, su propia extensión "echo" en ^9196$, el MISMO patrón que
+    genera nuestro backend, además de docenas de extensiones demo
+    (pizza_demo, Talking_Clock, group_dial_*, tod_example, etc.) que
+    podían chocar con números reales de extensiones/colas/voizbots
+    definidos por el usuario. Se deja vacío para eliminar cualquier
+    ambigüedad de qué config gana.
+-->
+<include>
+  <context name="default">
+  </context>
+</include>

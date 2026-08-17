@@ -1,0 +1,496 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------
+   Tokens de diseño
+   Un solo lugar define el color de todo el panel. Los componentes usan
+   nombres semánticos (surface, line, muted, brand…), nunca `slate-800`
+   suelto: así el modo claro y el oscuro se mantienen coherentes y se
+   pueden retocar sin tocar los componentes.
+------------------------------------------------------------------ */
+:root {
+  color-scheme: light;
+
+  --bg: #f4f6fb;
+  --bg-tint-a: rgb(249 115 22 / 0.1);
+  --bg-tint-b: rgb(14 165 233 / 0.08);
+
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-3: #eff3f9;
+  --sidebar: #ffffff;
+
+  --line: #e5e9f0;
+  --line-strong: #cdd5e1;
+
+  --fg: #0f172a;
+  --fg-soft: #334155;
+  --muted: #64748b;
+  --faint: #94a3b8;
+
+  --brand: #ea580c;
+  --brand-hover: #c2410c;
+  --brand-soft: #fff7ed;
+  --brand-text: #c2410c;
+  --on-brand: #ffffff;
+  --accent: #f97316;
+
+  --ok: #059669;
+  --ok-soft: #ecfdf5;
+  --ok-text: #047857;
+
+  --warn: #d97706;
+  --warn-soft: #fffbeb;
+  --warn-text: #b45309;
+
+  --danger: #e11d48;
+  --danger-soft: #fff1f2;
+  --danger-text: #be123c;
+
+  --info: #0284c7;
+  --info-soft: #f0f9ff;
+  --info-text: #0369a1;
+
+  --violet: #ea580c;
+  --violet-soft: #fff7ed;
+  --violet-text: #c2410c;
+
+  --ring: #f97316;
+
+  --shadow-1: 0 1px 2px rgb(15 23 42 / 0.05), 0 1px 3px rgb(15 23 42 / 0.04);
+  --shadow-2: 0 6px 16px -6px rgb(15 23 42 / 0.12), 0 2px 6px -2px rgb(15 23 42 / 0.06);
+  --shadow-3: 0 24px 48px -16px rgb(15 23 42 / 0.25), 0 8px 20px -12px rgb(15 23 42 / 0.14);
+  --shadow-brand: 0 6px 18px -6px rgb(234 88 12 / 0.45);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --bg: #080b14;
+  --bg-tint-a: rgb(251 146 60 / 0.16);
+  --bg-tint-b: rgb(56 189 248 / 0.1);
+
+  --surface: #0f1524;
+  --surface-2: #141b2d;
+  --surface-3: #1a2338;
+  --sidebar: #0b1120;
+
+  --line: #1e2739;
+  --line-strong: #2d3a52;
+
+  --fg: #e8edf7;
+  --fg-soft: #cbd5e1;
+  --muted: #94a3b8;
+  --faint: #64748b;
+
+  --brand: #fb923c;
+  --brand-hover: #fdba74;
+  --brand-soft: rgb(251 146 60 / 0.14);
+  --brand-text: #fdba74;
+  --on-brand: #1a0f00;
+  --accent: #fdba74;
+
+  --ok: #10b981;
+  --ok-soft: rgb(16 185 129 / 0.14);
+  --ok-text: #34d399;
+
+  --warn: #f59e0b;
+  --warn-soft: rgb(245 158 11 / 0.14);
+  --warn-text: #fbbf24;
+
+  --danger: #f43f5e;
+  --danger-soft: rgb(244 63 94 / 0.14);
+  --danger-text: #fb7185;
+
+  --info: #38bdf8;
+  --info-soft: rgb(56 189 248 / 0.14);
+  --info-text: #7dd3fc;
+
+  --violet: #fb923c;
+  --violet-soft: rgb(251 146 60 / 0.14);
+  --violet-text: #fdba74;
+
+  --ring: #fdba74;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 8px 20px -8px rgb(0 0 0 / 0.6);
+  --shadow-3: 0 28px 56px -20px rgb(0 0 0 / 0.75);
+  --shadow-brand: 0 6px 20px -8px rgb(251 146 60 / 0.6);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-sidebar: var(--sidebar);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-fg: var(--fg);
+  --color-fg-soft: var(--fg-soft);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-text: var(--brand-text);
+  --color-on-brand: var(--on-brand);
+  --color-accent: var(--accent);
+
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-text: var(--ok-text);
+
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-text: var(--warn-text);
+
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-text: var(--danger-text);
+
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-text: var(--info-text);
+
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --color-violet-text: var(--violet-text);
+
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ------------------------------------------------------------------
+   Base
+------------------------------------------------------------------ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    position: relative;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* Luz ambiental de fondo: dos manchas suaves que dan profundidad sin
+     interferir con el contenido (fixed + sin eventos de puntero). */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 34rem at 12% -8%, var(--bg-tint-a), transparent 60%),
+      radial-gradient(52rem 30rem at 92% 4%, var(--bg-tint-b), transparent 60%);
+  }
+
+  ::selection {
+    background: var(--brand);
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+    background-clip: content-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Animaciones
+------------------------------------------------------------------ */
+@keyframes nspbx-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nspbx-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nspbx-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nspbx-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nspbx-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes nspbx-ping-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.65;
+  }
+  70%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes nspbx-sheen {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(320%) skewX(-18deg);
+  }
+}
+
+@keyframes nspbx-llamando {
+  0%,
+  100% {
+    box-shadow: 0 0 0 6px color-mix(in oklab, var(--warn) 20%, transparent), var(--shadow-3);
+  }
+  50% {
+    box-shadow: 0 0 0 12px color-mix(in oklab, var(--warn) 8%, transparent), var(--shadow-3);
+  }
+}
+
+@keyframes nspbx-sacudir {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-14deg);
+  }
+  40% {
+    transform: rotate(11deg);
+  }
+  60% {
+    transform: rotate(-8deg);
+  }
+  80% {
+    transform: rotate(5deg);
+  }
+}
+
+@layer utilities {
+  .animate-fade-up {
+    animation: nspbx-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-fade-soft {
+    animation: nspbx-fade-in 0.35s ease both;
+  }
+  .animate-pop {
+    animation: nspbx-pop-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-slide-left {
+    animation: nspbx-slide-left 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-llamando {
+    animation: nspbx-llamando 1.1s ease-in-out infinite;
+  }
+  .animate-sacudir {
+    animation: nspbx-sacudir 0.9s ease-in-out infinite;
+  }
+
+  /* Tarjeta con reacción al puntero: sube, se ilumina el borde y la
+     sombra crece. Se usa en las cards de datos y en las de métricas. */
+  .card-lift {
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.28s ease, border-color 0.28s ease;
+  }
+  .card-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-3);
+    border-color: color-mix(in oklab, var(--brand) 42%, var(--line));
+  }
+
+  /* Brillo diagonal que cruza la tarjeta al pasar el mouse. */
+  .sheen {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 40%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.35),
+      transparent
+    );
+    transform: translateX(-120%) skewX(-18deg);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .dark .sheen::after {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(148 163 184 / 0.14),
+      transparent
+    );
+  }
+  .sheen:hover::after {
+    opacity: 1;
+    animation: nspbx-sheen 0.9s ease;
+  }
+
+  .press {
+    transition: transform 0.12s ease;
+  }
+  .press:active {
+    transform: scale(0.97);
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-3);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--surface) 70%, transparent),
+      transparent
+    );
+    animation: nspbx-shimmer 1.4s infinite;
+  }
+
+  .ping-ring::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: currentColor;
+    animation: nspbx-ping-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  .glass {
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}
+
+/* ------------------------------------------------------------------
+   React Flow (editor de flujo de voizbots)
+   La librería trae estilos claros fijos; los alineamos con los tokens.
+------------------------------------------------------------------ */
+.react-flow__controls {
+  box-shadow: var(--shadow-2);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  fill: var(--fg-soft);
+}
+.react-flow__controls-button:hover {
+  background: var(--surface-2);
+}
+.react-flow__minimap {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+.react-flow__attribution {
+  background: transparent;
+  color: var(--faint);
+}
+.react-flow__edge-path {
+  stroke: var(--line-strong);
+  stroke-width: 2;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--brand);
+}
+.react-flow__handle {
+  border-color: var(--surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

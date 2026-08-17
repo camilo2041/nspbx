@@ -1,0 +1,381 @@
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+
+class Trunk(Base):
+    __tablename__ = "trunks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    gateway_host: Mapped[str] = mapped_column(String(255))
+    gateway_port: Mapped[int] = mapped_column(Integer, default=5060)
+    username: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    from_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    register_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    caller_id_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    transport: Mapped[str] = mapped_column(String(10), default="udp")  # udp|tcp|tls
+    ping: Mapped[int | None] = mapped_column(Integer, nullable=True)  # segundos, qualify/keepalive
+    codec_prefs: Mapped[str | None] = mapped_column(String(255), nullable=True)  # ej. "PCMU,PCMA,G729"
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    campaigns: Mapped[list["Campaign"]] = relationship(back_populates="trunk")
+
+
+class Extension(Base):
+    __tablename__ = "extensions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    password: Mapped[str] = mapped_column(String(255))
+    caller_id_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    voicemail: Mapped[bool] = mapped_column(Boolean, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class VoiceBot(Base):
+    __tablename__ = "voicebots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    bot_type: Mapped[str] = mapped_column(String(20), default="ivr")  # "ivr" | "ai"
+    welcome_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: {"menu": {"1": "1000"}}
+    greeting_audio_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    flow_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # {"nodes": [...], "edges": [...]}
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    campaigns: Mapped[list["Campaign"]] = relationship(back_populates="voicebot")
+
+
+class Campaign(Base):
+    __tablename__ = "campaigns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    trunk_id: Mapped[int | None] = mapped_column(ForeignKey("trunks.id"), nullable=True)
+    voicebot_id: Mapped[int | None] = mapped_column(ForeignKey("voicebots.id"), nullable=True)
+    max_concurrency: Mapped[int] = mapped_column(Integer, default=5)
+    retries: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="idle")  # idle|running|paused|done
+    # Mensaje de apertura personalizado, con {variables} que se rellenan por
+    # número desde CampaignNumber.extra_data (ej. "Hola {cliente}, te
+    # recuerdo tu cita del {fecha}"). Si está vacío, el bot abre con el
+    # saludo genérico de la intención (ver ai_intents.py). El resto de la
+    # conversación (confirmar/reagendar/cancelar con disponibilidad real)
+    # sigue funcionando igual: esto solo reemplaza la primera frase.
+    message_template: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    trunk: Mapped["Trunk | None"] = relationship(back_populates="campaigns")
+    voicebot: Mapped["VoiceBot | None"] = relationship(back_populates="campaigns")
+    numbers: Mapped[list["CampaignNumber"]] = relationship(
+        back_populates="campaign", cascade="all, delete-orphan"
+    )
+    calls: Mapped[list["CallLog"]] = relationship(back_populates="campaign")
+
+
+class CampaignNumber(Base):
+    __tablename__ = "campaign_numbers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id"))
+    phone: Mapped[str] = mapped_column(String(30), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|dialing|answered|busy|noanswer|failed|done
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Variables propias de este número para rellenar Campaign.message_template
+    # (ej. {"cliente": "Camilo Barragán", "fecha": "21 de agosto"}), guardadas
+    # como JSON en texto — igual convención que voicebots.flow_json.
+    extra_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # La cita EXACTA que este número sincronizó en la Agenda (ver
+    # _sincronizar_agenda en app/api/campaigns.py) — se le pasa al voizbot
+    # al marcar (nspbx_appointment_id) para que actúe sobre ESA cita
+    # puntual y no adivine por teléfono cuál es, algo que falla de verdad
+    # cuando el mismo número tiene más de una cita confirmada.
+    appointment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("appointments.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    campaign: Mapped["Campaign"] = relationship(back_populates="numbers")
+
+
+class SystemSettings(Base):
+    __tablename__ = "system_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_name: Mapped[str] = mapped_column(String(100), default="NSPBX")
+    fs_domain: Mapped[str] = mapped_column(String(255), default="nspbx.local")
+    fs_esl_host: Mapped[str] = mapped_column(String(255), default="localhost")
+    fs_esl_port: Mapped[int] = mapped_column(Integer, default=8021)
+    fs_esl_password: Mapped[str] = mapped_column(String(255), default="ClueCon")
+    fs_http_base: Mapped[str] = mapped_column(String(255), default="http://localhost:8080")
+    sip_ws_url: Mapped[str] = mapped_column(String(255), default="wss://localhost:7443")
+    sip_server_ip: Mapped[str] = mapped_column(String(255), default="192.168.100.6")
+    sip_server_port: Mapped[int] = mapped_column(Integer, default=5060)
+    elevenlabs_api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    agent_webhook_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # El "cerebro" del voizbot no está atado a un proveedor fijo: cualquiera
+    # compatible con la API de chat completions de OpenAI (DeepSeek, OpenAI,
+    # Groq, Together AI, un servidor propio) sirve con solo cambiar estos
+    # tres campos desde Ajustes — el nombre es nada más para mostrarlo ahí
+    # y en Consumo IA. Ver app/services/llm.py.
+    ai_llm_provider_name: Mapped[str] = mapped_column(String(60), default="DeepSeek")
+    ai_llm_base_url: Mapped[str] = mapped_column(String(255), default="https://api.deepseek.com/v1")
+    ai_llm_model: Mapped[str] = mapped_column(String(100), default="deepseek-chat")
+    ai_llm_api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    record_all_calls: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Voz del voizbot con IA. edge-tts es gratis (voces nativas de Colombia);
+    # ElevenLabs suena más natural pero cuesta ~15x más por llamada — el TTS
+    # es el ~95% del costo de una conversación con IA (medido: 936
+    # caracteres por llamada típica).
+    deepgram_api_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Voz y transcripción se eligen POR SEPARADO a propósito: la
+    # combinación más barata es voz gratis (edge) con transcripción de
+    # Deepgram, y atarlas a un solo campo la haría imposible.
+    ai_stt_provider: Mapped[str] = mapped_column(String(20), default="elevenlabs")
+    ai_voice_provider: Mapped[str] = mapped_column(String(20), default="elevenlabs")
+    ai_voice_id: Mapped[str] = mapped_column(String(100), default="Xb7hH8MSUJpSbSDYk0k2")
+    # Tarifas para ESTIMAR el costo del consumo medido. Se guardan acá y no
+    # en el código porque cambian con el plan de cada proveedor; lo que se
+    # mide (caracteres, tokens) es exacto, el dinero es una estimación.
+    # En USD. El valor del TTS está calibrado con el consumo real de la
+    # cuenta ($0.15 por 2.290 caracteres facturados = $0.0655 por millar),
+    # no con una tarifa de lista: la estimación anterior de $0.30 inflaba
+    # el costo 4,6 veces. Ajustables desde Ajustes si cambia el plan.
+    rate_tts_per_1k_chars: Mapped[float] = mapped_column(Float, default=0.0655)
+    # Transcripción (ElevenLabs Scribe). Se mide desde el principio pero
+    # arranca sin tarifa: el panel del proveedor no la desglosa, así que
+    # ponerle un número inventado sería peor que dejarla en cero y a la
+    # vista. Con el plan a mano se llena desde Ajustes.
+    rate_stt_per_minute: Mapped[float] = mapped_column(Float, default=0.0065)
+    # Deepgram: $30/1M caracteres de voz y $0,29/hora de transcripción.
+    rate_dg_tts_per_1k_chars: Mapped[float] = mapped_column(Float, default=0.030)
+    rate_dg_stt_per_minute: Mapped[float] = mapped_column(Float, default=0.00483)
+    # Tarifa MEZCLADA del modelo, también sacada del consumo real
+    # (248.706 tokens por menos de $0,01). Es mucho más barata que la de
+    # lista porque DeepSeek cobra con descuento los tokens que ya tenía en
+    # caché, y en este voizbot el prompt del sistema —guion + calendario—
+    # se repite idéntico en cada turno. Del panel no se puede separar
+    # entrada de salida, y a esta escala da igual: el modelo es menos del
+    # 1% de la factura frente a la voz.
+    rate_llm_in_per_1m: Mapped[float] = mapped_column(Float, default=0.04)
+    rate_llm_out_per_1m: Mapped[float] = mapped_column(Float, default=0.04)
+
+    # Respaldo automático de la base y retención de grabaciones — ver
+    # app/workers/maintenance.py. Antes no existía ninguno de los dos: la
+    # base no tenía copia fuera del propio volumen, y las grabaciones se
+    # acumulaban sin límite hasta llenar el disco (lo que tumba a
+    # FreeSWITCH y a Postgres a la vez).
+    backup_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    backup_retention_days: Mapped[int] = mapped_column(Integer, default=14)
+    last_backup_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_backup_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_backup_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    recordings_retention_days: Mapped[int] = mapped_column(Integer, default=90)
+    # Válvula de seguridad además de la retención por días: si algo hace
+    # que se graben más llamadas de lo esperado, esto frena el crecimiento
+    # del disco aunque las grabaciones individualmente sean "recientes".
+    recordings_max_gb: Mapped[float] = mapped_column(Float, default=20.0)
+    # Misma válvula que recordings_max_gb, pero para /backups: antes solo
+    # tenía límite por días, así que una racha de respaldos manuales
+    # ("Respaldar ahora" repetido) podía acumular más de la cuenta sin que
+    # nada la frenara hasta la siguiente purga por antigüedad.
+    backups_max_gb: Mapped[float] = mapped_column(Float, default=5.0)
+
+    # Protección contra fraude telefónico: sin esto, una extensión
+    # comprometida (o un bug) puede dejar una llamada saliente corriendo
+    # horas hacia un número caro sin que nadie se entere hasta la factura.
+    # Se aplica a TODA llamada (entrante, saliente, interna) — ver
+    # _append_recording_hook en config_generator.py, que ya corre en cada
+    # una. 0 = sin tope (para quien de verdad necesite llamadas largas).
+    max_call_duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    # Tope de canales simultáneos en TODA la central, no solo por
+    # campaña — antes cada campaña respetaba su propio max_concurrency,
+    # pero nada impedía que dos campañas a la vez (o una campaña más
+    # tráfico entrante) superaran lo que la troncal real soporta, y el
+    # proveedor empieza a rechazar TODO, entrantes incluidas.
+    max_concurrent_calls: Mapped[int] = mapped_column(Integer, default=20)
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class CallLog(Base):
+    __tablename__ = "call_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True)
+    extension_id: Mapped[int | None] = mapped_column(ForeignKey("extensions.id"), nullable=True)
+    uuid: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    caller_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    caller_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    callee_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    direction: Mapped[str] = mapped_column(String(10))  # inbound|outbound
+    status: Mapped[str] = mapped_column(String(20))  # answered|no_answer|busy|failed|cancelled
+    duration: Mapped[int] = mapped_column(Integer, default=0)  # total, incluye timbrado
+    billsec: Mapped[int] = mapped_column(Integer, default=0)  # solo tiempo hablado
+    hangup_cause: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    recording_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Resumen de lo que pasó, generado al pedirlo y guardado acá para no
+    # volver a pagar transcripción cada vez que alguien lo abre. Va en
+    # CallLog y no en el consumo de IA porque el resumen se arma desde la
+    # grabación: aplica también a llamadas que nunca tocaron el voizbot.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    campaign: Mapped["Campaign | None"] = relationship(back_populates="calls")
+
+
+class AiCallUsage(Base):
+    """Consumo de una conversación del voizbot con IA.
+
+    Se guardan UNIDADES MEDIDAS (caracteres, tokens, segundos), no dinero:
+    los precios de los proveedores cambian y se configuran aparte, así que
+    el costo se calcula al consultar. Sin esta tabla no había forma de
+    saber cuánto cuesta una llamada ni por qué se dispara el gasto."""
+
+    __tablename__ = "ai_call_usage"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    call_uuid: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    turns: Mapped[int] = mapped_column(Integer, default=0)
+    # Texto a voz: lo que más pesa en la factura de una llamada con IA.
+    tts_chars: Mapped[int] = mapped_column(Integer, default=0)
+    tts_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    stt_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Voz a texto: segundos de audio enviados al STT en streaming.
+    stt_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    # Modelo de lenguaje: se separan entrada y salida porque cuestan distinto.
+    llm_calls: Mapped[int] = mapped_column(Integer, default=0)
+    llm_prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    llm_completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+
+    # completed | no_speech | max_turns | hangup | error
+    outcome: Mapped[str] = mapped_column(String(20), default="completed")
+    # Si la conversación terminó con una gestión hecha sobre la agenda:
+    # es el numerador de la tasa de contención.
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Qué hizo la llamada sobre la agenda, no solo SI hizo algo — antes
+    # "resolved" era un booleano ciego: no quedaba registro de si
+    # confirmó, canceló o reagendó, ni para cuándo. `appointment_id`
+    # apunta a la cita en el momento de la acción; se guarda ADEMÁS
+    # `action_appointment_date`/`action_patient_name` como fotografía de
+    # ese instante, porque la cita puede reagendarse de nuevo después y
+    # perder el dato que importaba en esta llamada.
+    action: Mapped[str | None] = mapped_column(String(20), nullable=True)  # confirmada|cancelada|reagendada|agendada
+    appointment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("appointments.id", ondelete="SET NULL"), nullable=True
+    )
+    action_appointment_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    action_patient_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Queue(Base):
+    """Cola de llamadas entrantes (call center), estilo Issabel/FreePBX,
+    sobre mod_callcenter de FreeSWITCH."""
+
+    __tablename__ = "queues"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    extension: Mapped[str] = mapped_column(String(30), unique=True)  # número que marcan para entrar a la cola
+    strategy: Mapped[str] = mapped_column(String(40), default="ring-all")
+    moh_sound: Mapped[str] = mapped_column(String(255), default="$${hold_music}")
+    agents: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: ["1000", "1001"]
+    max_wait_time: Mapped[int] = mapped_column(Integer, default=0)  # 0 = sin límite
+    max_wait_time_with_no_agent: Mapped[int] = mapped_column(Integer, default=0)
+    agent_ring_timeout: Mapped[int] = mapped_column(Integer, default=20)  # timbrado por agente antes de saltar
+    max_no_answer: Mapped[int] = mapped_column(Integer, default=3)  # inactivar agente tras N no-contesta
+    wrap_up_time: Mapped[int] = mapped_column(Integer, default=10)  # pausa del agente tras colgar
+    record: Mapped[bool] = mapped_column(Boolean, default=False)
+    failover_extension: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    announce_position: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class InboundRoute(Base):
+    """Ruta de entrada por DID: a qué número le llega una llamada externa y
+    a dónde se enruta (extensión, cola o voizbot) — estilo Issabel."""
+
+    __tablename__ = "inbound_routes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    did_pattern: Mapped[str] = mapped_column(String(100))  # dígitos exactos, o "any" para comodín
+    destination_type: Mapped[str] = mapped_column(String(20))  # extension|queue|voicebot|hangup
+    destination_value: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=10)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Appointment(Base):
+    """Cita agendada — pensada para que un agente de IA (ej. ElevenLabs
+    Conversational AI) la consulte/gestione vía los endpoints de
+    /api/appointments/agent/*, además de administrarse a mano en la app."""
+
+    __tablename__ = "appointments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_name: Mapped[str] = mapped_column(String(150))
+    phone: Mapped[str] = mapped_column(String(30))
+    appointment_date: Mapped[datetime] = mapped_column(DateTime)  # fecha+hora de inicio
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    status: Mapped[str] = mapped_column(String(20), default="confirmed")  # confirmed|cancelled|completed
+    # Cuándo el PACIENTE confirmó que va a asistir. Distinto de status:
+    # una cita nace "confirmed" porque está agendada, pero eso no dice
+    # nada de si la persona la ratificó. Antes marcar 1 solo reproducía un
+    # audio y no dejaba rastro de quién confirmó ni cuándo.
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class User(Base):
+    """Persona que entra al panel.
+
+    `extension_id` ata al usuario con una extensión SIP. Es obligatorio
+    para los asesores —sin extensión no pueden atender ni ver "sus"
+    llamadas— y opcional para el resto: un supervisor puede tener línea
+    para escuchar o apoyar, o no tenerla.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(60), unique=True, index=True)
+    full_name: Mapped[str] = mapped_column(String(150))
+    email: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="asesor")
+    extension_id: Mapped[int | None] = mapped_column(
+        ForeignKey("extensions.id", ondelete="SET NULL"), nullable=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Para saber quién dejó de usar el sistema antes de borrarle la cuenta.
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    extension: Mapped["Extension | None"] = relationship(lazy="joined")

@@ -1,0 +1,213 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nspbx_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nspbx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nspbx_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-nspbx}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nspbx}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - nspbx_net
+
+  freeswitch:
+    build: ./freeswitch
+    container_name: nspbx_freeswitch
+    restart: unless-stopped
+    environment:
+      # Solo para el healthcheck de acá abajo (fs_cli necesita loguearse).
+      # El valor real que manda FreeSWITCH sigue siendo el de
+      # event_socket.conf.xml — este debe coincidir con ese, no lo
+      # reemplaza.
+      FS_ESL_PASSWORD: ${FS_ESL_PASSWORD:?Definí FS_ESL_PASSWORD en .env}
+    volumes:
+      - ./freeswitch/conf:/etc/freeswitch
+      - ./freeswitch/sounds:/usr/share/freeswitch/sounds
+      - ./freeswitch/recordings:/var/lib/freeswitch/recordings
+      - fs_scripts:/usr/share/freeswitch/scripts
+      # El certificado del WebSocket seguro (wss.pem) NO puede vivir solo
+      # dentro del contenedor: FreeSWITCH lo autogenera si no lo
+      # encuentra, así que sin este volumen cada reconstrucción del
+      # contenedor generaba uno NUEVO — y cualquier navegador que ya
+      # hubiera aceptado el certificado anterior tenía que volver a
+      # aceptar el nuevo. Con esto, el mismo certificado sobrevive entre
+      # despliegues.
+      - ./freeswitch/certs:/usr/local/freeswitch/certs
+    # NOTA: se probó network_mode: host para evitar el NAT de Docker en el
+    # tráfico UDP, pero en Docker Desktop con backend WSL2 eso comparte la
+    # red de la VM de WSL2, NO la de Windows — ni el navegador ni el resto
+    # de contenedores pueden alcanzarlo así. Revertido a bridge + puertos
+    # publicados (que sí son accesibles vía localhost gracias al proxy de
+    # Docker Desktop).
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "5080:5080/udp"
+      # 8021 (ESL) NO se publica al host: es el socket de control que
+      # permite originar llamadas, leer canales y ejecutar comandos —
+      # con la contraseña de fábrica ("ClueCon") es el vector de fraude
+      # telefónico más buscado por escáneres automatizados de internet.
+      # Solo lo necesita el backend, que lo alcanza por la red interna
+      # de Docker (nspbx_net) sin que este puerto exista en el host.
+      # Para inspeccionarlo a mano en desarrollo: `docker exec -it
+      # nspbx_freeswitch fs_cli` (corre DENTRO del contenedor, no necesita
+      # el puerto publicado).
+      - "5066:5066"       # SIP sobre WebSocket sin cifrar (queda de respaldo)
+      - "7443:7443"       # SIP sobre WebSocket CIFRADO (wss://) — softphone del navegador
+      - "16384-16584:16384-16584/udp"  # RTP (audio WebRTC del softphone)
+    depends_on:
+      backend:
+        condition: service_healthy
+      voicebot:
+        condition: service_healthy
+    healthcheck:
+      # No usa 127.0.0.1: event_socket.conf.xml ata el ESL a la IP real del
+      # contenedor ($${local_ip_v4}), no a loopback (ver ese archivo para
+      # el motivo). "hostname -i" la resuelve igual que FreeSWITCH.
+      test: ["CMD-SHELL", "fs_cli -H $$(hostname -i) -P 8021 -p \"$$FS_ESL_PASSWORD\" -x status | grep -q 'is ready'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - nspbx_net
+
+  backend:
+    build: ./backend
+    image: nspbx-backend:latest
+    container_name: nspbx_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nspbx}:${POSTGRES_PASSWORD:-nspbx_secret}@postgres:5432/${POSTGRES_DB:-nspbx}
+      FS_ESL_HOST: freeswitch
+      FS_ESL_PORT: "8021"
+      # Sin valor de respaldo a propósito: `:?` hace que falle el arranque
+      # si falta en .env, en vez de reseedear la contraseña de fábrica
+      # "ClueCon" —o peor, una vacía— en una instalación nueva.
+      FS_ESL_PASSWORD: ${FS_ESL_PASSWORD:?Definí FS_ESL_PASSWORD en .env — ver freeswitch/conf/autoload_configs/event_socket.conf.xml}
+      FS_HTTP_BASE: http://freeswitch:8080
+      FS_CONF_DIR: /freeswitch-conf
+      FS_SOUNDS_DIR: /freeswitch-sounds
+      # Debe coincidir con el ?secret= de freeswitch/conf/autoload_configs/xml_curl.conf.xml.
+      FS_XML_SECRET: ${FS_XML_SECRET:?Definí FS_XML_SECRET en .env — ver freeswitch/conf/autoload_configs/xml_curl.conf.xml}
+      # Firma los tokens de sesión. Si falta, el backend genera una clave
+      # al azar en cada arranque y todo el mundo queda desconectado al
+      # reiniciar. Se define en .env, nunca acá con un valor por defecto:
+      # una clave fija en el repositorio deja firmar tokens de admin a
+      # cualquiera que lo lea.
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      # Solo se usa la primera vez, para crear el usuario "admin". Si se
+      # deja vacío, la contraseña se genera y sale en el log del arranque.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - ./freeswitch/conf:/freeswitch-conf
+      - ./freeswitch/sounds:/freeswitch-sounds
+      - ./freeswitch/recordings:/freeswitch-recordings
+      # Carpeta del host y no un volumen con nombre a propósito: son
+      # archivos .sql.gz comunes, y así se pueden copiar a un disco
+      # externo o a otra máquina sin pasar por Docker para nada — la
+      # respuesta real a "¿y si se pierde este servidor entero?".
+      - ./backups:/backups
+    ports:
+      # Atado a 127.0.0.1 y NO a 0.0.0.0: la API queda accesible solo
+      # desde este mismo servidor. Sin el prefijo, Docker publica en
+      # todas las interfaces y cualquiera en la red podía llegarle —
+      # lo que convertía en explotable el /fs/cdr que estaba sin
+      # secreto (ver app/api/calls.py). FreeSWITCH NO usa este puerto:
+      # le habla al backend por la red interna de Docker (backend:8000),
+      # así que esto no afecta CDR, dialplan ni directorio.
+      # OJO: si alguna vez hay que entrar al panel desde otro equipo,
+      # este puerto y el 3005 del frontend tienen que volver a 0.0.0.0
+      # (o mejor, atarse a la IP LAN concreta).
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # Sin curl: se purga de esta imagen después de instalar pg_dump (ver
+      # backend/Dockerfile) para no dejarlo de regalo en la imagen final.
+      # Python ya está — es la propia app.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - nspbx_net
+
+  # Pipeline de IA en vivo (control de llamada por ESL outbound socket +
+  # streaming de audio) — ver app/voicebot_server.py para el porqué de
+  # separarlo del backend. Misma imagen que "backend" (mismo Dockerfile,
+  # mismo código), solo cambia el comando que arranca.
+  voicebot:
+    # Sin "build:" propio: reutiliza la MISMA imagen que ya construyó el
+    # servicio "backend" (mismo Dockerfile, mismo código) — un solo build,
+    # dos contenedores, cada uno arrancando un comando distinto.
+    image: nspbx-backend:latest
+    container_name: nspbx_voicebot
+    restart: unless-stopped
+    command: ["uvicorn", "app.voicebot_server:app", "--host", "0.0.0.0", "--port", "8090"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-nspbx}:${POSTGRES_PASSWORD:-nspbx_secret}@postgres:5432/${POSTGRES_DB:-nspbx}
+      FS_SOUNDS_DIR: /freeswitch-sounds
+    volumes:
+      # Solo el de sonidos: acá se escribe el audio de "tecleo" y las
+      # frases sintetizadas por turno, y FreeSWITCH necesita poder leerlas
+      # de vuelta (por eso comparte carpeta con el propio FreeSWITCH). No
+      # necesita conf/ ni recordings/: no toca el dialplan ni graba nada.
+      - ./freeswitch/sounds:/freeswitch-sounds
+    # Sin "ports": ni el socket ESL (8085) ni el websocket de audio (8090)
+    # se publican al host — igual que el ESL de FreeSWITCH (puerto 8021):
+    # son canales de control interno, solo FreeSWITCH necesita hablarles,
+    # y lo hace por la red interna de Docker.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - nspbx_net
+
+  frontend:
+    build: ./frontend
+    container_name: nspbx_frontend
+    restart: unless-stopped
+    ports:
+      # Mismo criterio que el backend: solo desde este servidor. Van
+      # juntos a propósito — el navegador arma la URL de la API con el
+      # host por el que entró (ver frontend/lib/api.ts), así que dejar
+      # el panel abierto en la LAN con la API cerrada daría una página
+      # que carga pero donde no se puede ni iniciar sesión.
+      - "127.0.0.1:3005:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - nspbx_net
+
+volumes:
+  pg_data:
+  fs_scripts:
+
+networks:
+  nspbx_net:
+    driver: bridge

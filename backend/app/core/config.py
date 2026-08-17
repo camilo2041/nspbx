@@ -1,0 +1,74 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    app_name: str = "NSPBX"
+    database_url: str = "postgresql+asyncpg://nspbx:nspbx_secret@localhost:5432/nspbx"
+
+    fs_esl_host: str = "localhost"
+    fs_esl_port: int = 8021
+    # Sin "ClueCon" como respaldo: si alguna vez esta clase se instancia
+    # sin FS_ESL_PASSWORD en el entorno (fuera de docker-compose, en un
+    # script suelto), que quede vacío y falle a la vista, no que caiga en
+    # la contraseña de fábrica de FreeSWITCH.
+    fs_esl_password: str = ""
+
+    fs_http_base: str = "http://localhost:8080"
+
+    # Secreto que FreeSWITCH manda como query string al pedir /fs/directory
+    # y /fs/dialplan (ver xml_curl.conf.xml). Sin esto, cualquiera que
+    # llegue al puerto del backend podía pedir /fs/directory y llevarse la
+    # contraseña SIP de cada extensión en texto plano, sin loguearse.
+    fs_xml_secret: str = ""
+
+    fs_conf_dir: str = "/freeswitch-conf"
+    fs_sounds_dir: str = "/freeswitch-sounds"
+    # Mismo valor que la ruta montada en docker-compose.yml para el
+    # backend y para FreeSWITCH (con otro nombre de punto de montaje).
+    recordings_dir: str = "/freeswitch-recordings"
+    # Cómo VE FreeSWITCH ese mismo directorio (su propio $${recordings_dir},
+    # confirmado con `eval $${recordings_dir}` por ESL) — es el prefijo que
+    # trae `recording_path` en el CDR, y hay que pelarlo para reconstruir
+    # la ruta LOCAL del backend (que monta el mismo volumen en otro punto).
+    fs_recordings_dir: str = "/var/lib/freeswitch/recordings"
+
+    # Volumen APARTE del de Postgres a propósito (ver docker-compose.yml,
+    # volumen `pg_backups`): si los dumps vivieran en el mismo volumen que
+    # la base, una corrupción del volumen de datos se lleva puesto también
+    # el respaldo.
+    backups_dir: str = "/backups"
+
+    fs_domain: str = "nspbx.local"
+
+    # Zona horaria del negocio. La agenda (horario de atención, "hoy",
+    # "mañana", si un cupo ya pasó) se interpreta siempre en esta zona,
+    # sin importar en qué zona corra el contenedor. Ver app/core/clock.py.
+    timezone: str = "America/Bogota"
+
+    sip_ws_url: str = "wss://localhost:7443"
+
+    # URL que usa mod_audio_fork (desde el contenedor de FreeSWITCH) para
+    # streamear el audio del canal hacia el endpoint websocket del voizbot
+    # IA. "voicebot" es el servicio dedicado en docker-compose.yml — vive
+    # aparte del backend (API REST) a propósito: si compartieran proceso,
+    # cada despliegue del backend (mucho más frecuente) cortaría de
+    # cuajo cualquier llamada de IA en curso en ese instante.
+    voicebot_ws_base: str = "ws://voicebot:8090/ws/voicebot"
+
+    # Dónde le dice el dialplan a FreeSWITCH que conecte el "socket"
+    # (ESL outbound) para entregarle el control de la llamada al voizbot
+    # de IA. Mismo motivo que voicebot_ws_base: servicio propio, no el
+    # backend. Lo usa app/services/flow_engine.py al generar el dialplan.
+    voicebot_esl_socket: str = "voicebot:8085"
+
+    # IP/puerto que deben usar softphones de escritorio (3CXPhone, X-Lite,
+    # Zoiper) para registrarse — NO es la URL websocket del softphone del
+    # navegador. Debe ser una IP alcanzable por esos programas (LAN o
+    # pública con NAT/puertos abiertos), no localhost/127.0.0.1.
+    sip_server_ip: str = "192.168.100.6"
+    sip_server_port: int = 5060
+
+
+settings = Settings()

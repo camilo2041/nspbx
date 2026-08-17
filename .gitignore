@@ -1,0 +1,55 @@
+# --- SECRETOS: nunca al repositorio ---------------------------------
+# Contraseñas de base, del Event Socket de FreeSWITCH y clave de firma
+# de sesiones. Ver .env.example para la plantilla sin valores.
+.env
+.env.*
+!.env.example
+
+# Configuración de FreeSWITCH que lleva secretos REALES embebidos.
+# Se versionan las plantillas .example de al lado; estas son las que
+# tienen los valores de producción y se arman al instalar.
+freeswitch/conf/autoload_configs/event_socket.conf.xml
+freeswitch/conf/autoload_configs/xml_curl.conf.xml
+freeswitch/conf/autoload_configs/json_cdr.conf.xml
+
+# Troncales SIP: las genera el backend a partir de la base de datos
+# (ver backend/app/services/gateways.py) y contienen la CONTRASEÑA del
+# proveedor en texto plano. Si se filtran, cualquiera puede cursar
+# llamadas facturadas a esta cuenta — el fraude telefónico clásico.
+freeswitch/conf/sip_profiles/external/gw_*.xml
+
+# Certificado y clave privada del WebSocket seguro (softphone).
+freeswitch/certs/
+
+# --- DATOS: privados y pesados --------------------------------------
+# Grabaciones de llamadas reales de pacientes (dato de salud).
+freeswitch/recordings/
+# Volcados completos de la base: nombres, teléfonos, historial y hashes.
+backups/
+# Audios generados por el voizbot durante cada llamada.
+freeswitch/sounds/ai_sessions/
+freeswitch/sounds/tts_cache/
+# Base y logs internos de FreeSWITCH.
+freeswitch/db/
+freeswitch/log/
+*.log
+
+# --- Dependencias y artefactos de build -----------------------------
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- Sistema operativo / editores -----------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp

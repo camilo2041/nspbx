@@ -1,0 +1,27 @@
+<configuration name="json_cdr.conf" description="JSON CDR">
+  <settings>
+    <!-- Al colgar cada llamada, FreeSWITCH envía el CDR completo al backend,
+         que lo guarda en la tabla call_logs (ver backend/app/api/calls.py).
+         Antes esa tabla existía pero nadie la llenaba: no había historial.
+
+         El último segmento de la ruta es el MISMO secreto de
+         xml_curl.conf.xml (variable FS_XML_SECRET del .env) y debe
+         coincidir con él: /fs/cdr no cuelga de /api/, así que no pasa
+         por el guardia de sesión y sin este secreto quedaba abierto —
+         cualquiera con acceso al puerto del backend podía inyectar
+         llamadas falsas en el historial. Si se rota el secreto, hay que
+         cambiarlo en los TRES lugares (.env, xml_curl.conf.xml y acá).
+
+         Va en la RUTA y no como "?secret=" porque mod_json_cdr le
+         agrega siempre su propio "?uuid=..." al final: en query string
+         quedaba "?secret=XXX?uuid=YYY" y el backend rechazaba TODOS los
+         CDR con 403 (comprobado en vivo). -->
+    <param name="url" value="http://backend:8000/fs/cdr/REEMPLAZAR_POR_FS_XML_SECRET"/>
+    <param name="encode" value="false"/>
+    <param name="retries" value="3"/>
+    <param name="delay" value="2"/>
+    <!-- Si el backend está caído, el CDR queda en disco para no perderlo. -->
+    <param name="err-log-dir" value="/var/log/freeswitch/json_cdr_failed"/>
+    <param name="timeout" value="10"/>
+  </settings>
+</configuration>

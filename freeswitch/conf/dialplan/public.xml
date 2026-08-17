@@ -1,0 +1,18 @@
+<!--
+    Vaciado intencionalmente: el contexto "public" real (a donde caen las
+    llamadas entrantes de la troncal) lo genera y sirve NSPBX en caliente
+    vía mod_xml_curl (backend GET /fs/dialplan, sección "Rutas entrantes"),
+    igual que el contexto "default" — ver dialplan/default.xml.
+
+    El archivo original de fábrica dejaba pasar CUALQUIER llamada entrante
+    a las extensiones 1000-1019 sin ningún control de ruteo (patrón
+    ^(10[01][0-9])$), y además incluía public/00_inbound_did.xml con un
+    DID de ejemplo hardcodeado (5551212 -> 1000). Se vació para que TODA
+    llamada entrante pase obligatoriamente por las rutas configuradas en
+    NSPBX (o se cuelgue si no matchea ninguna) en vez de fugarse por reglas
+    de fábrica.
+-->
+<include>
+  <context name="public">
+  </context>
+</include>

@@ -1,0 +1,19 @@
+<configuration name="event_socket.conf" description="Socket Client">
+  <settings>
+    <param name="nat-map" value="false"/>
+    <!-- NO "0.0.0.0": con family UNSPEC, APR resuelve el wildcard como
+    dual-stack "::" y falla en este contenedor (solo tiene loopback IPv6,
+    sin IPv6 real) — "Cannot get information about IP address ::",
+    mod_event_socket ni siquiera arrancaba. $${local_ip_v4} es la IP real
+    del contenedor, detectada automáticamente por FreeSWITCH al iniciar. -->
+    <param name="listen-ip" value="$${local_ip_v4}"/>
+    <param name="listen-port" value="8021"/>
+    <!-- "ClueCon" es la contraseña de fábrica de FreeSWITCH — la más
+    buscada por escáneres de fraude telefónico en todo internet. Nunca
+    debe quedar así en un sistema real. Si se cambia, hay que actualizar
+    también SystemSettings.fs_esl_password (Ajustes → ESL) para que el
+    backend siga pudiendo autenticarse. -->
+    <param name="password" value="REEMPLAZAR_POR_FS_ESL_PASSWORD"/>
+    <param name="apply-inbound-acl" value="nspbx_esl"/>
+  </settings>
+</configuration>

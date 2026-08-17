@@ -1,0 +1,13 @@
+<!--
+    Deshabilitado a propósito: NSPBX gestiona el directorio de extensiones de forma
+    dinámica vía mod_xml_curl (ver autoload_configs/xml_curl.conf.xml -> backend
+    /fs/directory). Este archivo, tal como venía por defecto con FreeSWITCH, definía
+    un dominio "$${domain}" estático con usuarios de ejemplo (1000-1019, password
+    $${default_password}) que colisionaba con las extensiones reales creadas desde
+    el panel: al existir dos entradas para el mismo id (p. ej. "1000"), FreeSWITCH
+    resolvía la autenticación contra la entrada estática de ejemplo en vez de la
+    password real guardada en la base de datos, y todo registro SIP fallaba con
+    403 Forbidden aunque el password fuera correcto.
+-->
+<include>
+</include>

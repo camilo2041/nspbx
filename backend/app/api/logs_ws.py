@@ -1,0 +1,82 @@
+"""Consola de logs en vivo — la versión web de pararse en `fs_cli` con
+`/log <nivel>` (para quien viene de Asterisk: el equivalente de
+`asterisk -rvvvvv`).
+
+Vive fuera de /api/ (como el websocket del voizbot) porque un WebSocket
+de navegador no puede mandar la cabecera Authorization en el handshake:
+el token viaja por query string y se valida acá a mano, con el mismo
+criterio que `sesion_obligatoria`/`requiere` usan para el resto de la
+API — nada de exponer esto sin sesión, es el tráfico SIP completo de la
+central.
+"""
+
+import asyncio
+import logging
+
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core import permissions
+from app.core.database import get_session
+from app.core.security import leer_token
+from app.models import User
+from app.services import esl
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+async def _usuario_del_token(token: str | None, session: AsyncSession) -> User | None:
+    if not token:
+        return None
+    datos = leer_token(token)
+    if not datos:
+        return None
+    try:
+        user_id = int(datos.get("sub", ""))
+    except (TypeError, ValueError):
+        return None
+    usuario = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not usuario or not usuario.enabled:
+        return None
+    return usuario
+
+
+@router.websocket("/ws/logs")
+async def logs_websocket(websocket: WebSocket, session: AsyncSession = Depends(get_session)):
+    usuario = await _usuario_del_token(websocket.query_params.get("token"), session)
+    # Mismo permiso que troncales/extensiones: quien puede ver esto puede
+    # ver el tráfico SIP completo, así que es tan sensible como las
+    # credenciales de una troncal.
+    if not usuario or not permissions.puede(usuario.role, permissions.TELEFONIA_GESTIONAR):
+        await websocket.close(code=4401)
+        return
+
+    level = websocket.query_params.get("level", "info")
+    await websocket.accept()
+    try:
+        async for linea in esl.stream_logs(level):
+            await websocket.send_text(linea)
+    except WebSocketDisconnect:
+        pass
+    except (OSError, ConnectionError, asyncio.TimeoutError) as exc:
+        # FreeSWITCH no alcanzable (todavía arrancando, reiniciándose o
+        # caído). Es esperable y el navegador reintenta cada 2s, así que
+        # se registra UNA línea corta y no un traceback: con la consola
+        # abierta durante un arranque en frío esto llenaba el log con
+        # ~10 tracebacks seguidos, y con FreeSWITCH caído un rato los
+        # errores de verdad quedaban enterrados debajo.
+        logger.warning("Consola de logs: FreeSWITCH no disponible (%s)", exc.__class__.__name__)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
+    except Exception:
+        # Cualquier otra cosa sí es inesperada y se quiere el traceback.
+        logger.exception("Consola de logs: error en el stream para %s", usuario.username)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass

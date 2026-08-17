@@ -1,0 +1,20 @@
+<configuration name="xml_curl.conf" description="cURL XML Gateway">
+  <!-- El "?secret=" es fijo, no algo que FreeSWITCH calcule por llamada:
+       el backend lo compara contra FS_XML_SECRET (.env) antes de devolver
+       el directorio o el dialplan. Sin él, cualquiera que llegara al
+       puerto del backend podía pedir /fs/directory y llevarse la
+       contraseña SIP de cada extensión sin loguearse. Si se cambia acá,
+       hay que cambiarlo también en .env y reiniciar el backend. -->
+  <bindings>
+    <binding name="nspbx-directory">
+      <param name="gateway-url" value="http://backend:8000/fs/directory?secret=REEMPLAZAR_POR_FS_XML_SECRET" bindings="directory"/>
+      <param name="method" value="GET"/>
+      <param name="timeout" value="10"/>
+    </binding>
+    <binding name="nspbx-dialplan">
+      <param name="gateway-url" value="http://backend:8000/fs/dialplan?secret=REEMPLAZAR_POR_FS_XML_SECRET" bindings="dialplan"/>
+      <param name="method" value="GET"/>
+      <param name="timeout" value="10"/>
+    </binding>
+  </bindings>
+</configuration>
