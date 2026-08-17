@@ -46,6 +46,14 @@ __pycache__/
 .venv/
 venv/
 
+# --- Herramientas locales -------------------------------------------
+# Configuración de Claude Code: es del equipo de quien programa, no del
+# proyecto. `settings.local.json` además guarda reglas de permisos que
+# solo tienen sentido en esa máquina — hoy lo tapaba un .gitignore
+# global del usuario, que no protege a nadie que clone el repo en otro
+# lado, así que se ignora explícitamente acá.
+.claude/
+
 # --- Sistema operativo / editores -----------------------------------
 .DS_Store
 Thumbs.db
