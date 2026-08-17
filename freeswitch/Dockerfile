@@ -28,13 +28,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARG FREESWITCH_REF=v1.10.12
-# Commit fijo, NO la rama "main": con una rama móvil, reconstruir esta
-# imagen dentro de seis meses podía traer otro mod_audio_fork y dejar
-# sin audio al voizbot sin que nadie hubiera tocado una línea del
-# proyecto. Este es el HEAD de main del 2024-03-07 ("update readme"),
-# que es el que ya está compilado y funcionando en producción.
-# Para actualizarlo a propósito: cambiar el SHA y reconstruir.
-ARG DRACHTIO_MODULES_REF=88e1465908a89bed5c95d336aa53a3899bb5abb5
+# (DRACHTIO_MODULES_REF se declara más abajo, justo antes de usarse:
+#  un ARG invalida la caché de TODAS las capas siguientes, así que
+#  declararlo acá arriba obligaba a recompilar FreeSWITCH entero —
+#  ~40 minutos— cada vez que se tocaba la versión del módulo.)
 
 # --- FreeSWITCH: mismos módulos que ya carga freeswitch/conf/autoload_configs
 # (mod_signalwire, mod_sofia, mod_esl, mod_xml_curl, mod_pgsql, mod_flite,
@@ -109,6 +106,14 @@ RUN make install
 # reestructurar el árbol ya compilado, se linkea a mano contra la
 # instalación de FreeSWITCH ya hecha arriba vía `pkg-config freeswitch`
 # (interfaz pensada justo para compilar módulos de terceros así).
+# Commit fijo, NO la rama "main": con una rama móvil, reconstruir esta
+# imagen dentro de seis meses podía traer otro mod_audio_fork y dejar
+# sin audio al voizbot sin que nadie hubiera tocado una línea del
+# proyecto. Este es el HEAD de main del 2024-03-07 ("update readme"),
+# que es el que ya está compilado y funcionando en producción.
+# Para actualizarlo a propósito: cambiar el SHA y reconstruir.
+ARG DRACHTIO_MODULES_REF=88e1465908a89bed5c95d336aa53a3899bb5abb5
+
 # `git clone --branch` NO acepta un SHA (solo rama o tag), así que se
 # trae el commit puntual con un fetch superficial: mismo peso de
 # descarga que el clone --depth 1 anterior, pero reproducible.
