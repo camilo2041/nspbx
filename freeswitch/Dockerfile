@@ -28,7 +28,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARG FREESWITCH_REF=v1.10.12
-ARG DRACHTIO_MODULES_REF=main
+# Commit fijo, NO la rama "main": con una rama móvil, reconstruir esta
+# imagen dentro de seis meses podía traer otro mod_audio_fork y dejar
+# sin audio al voizbot sin que nadie hubiera tocado una línea del
+# proyecto. Este es el HEAD de main del 2024-03-07 ("update readme"),
+# que es el que ya está compilado y funcionando en producción.
+# Para actualizarlo a propósito: cambiar el SHA y reconstruir.
+ARG DRACHTIO_MODULES_REF=88e1465908a89bed5c95d336aa53a3899bb5abb5
 
 # --- FreeSWITCH: mismos módulos que ya carga freeswitch/conf/autoload_configs
 # (mod_signalwire, mod_sofia, mod_esl, mod_xml_curl, mod_pgsql, mod_flite,
@@ -103,8 +109,15 @@ RUN make install
 # reestructurar el árbol ya compilado, se linkea a mano contra la
 # instalación de FreeSWITCH ya hecha arriba vía `pkg-config freeswitch`
 # (interfaz pensada justo para compilar módulos de terceros así).
-RUN git clone --depth 1 --branch ${DRACHTIO_MODULES_REF} \
-    https://github.com/mdslaney/drachtio-freeswitch-modules.git /usr/src/drachtio-modules
+# `git clone --branch` NO acepta un SHA (solo rama o tag), así que se
+# trae el commit puntual con un fetch superficial: mismo peso de
+# descarga que el clone --depth 1 anterior, pero reproducible.
+RUN mkdir -p /usr/src/drachtio-modules \
+    && cd /usr/src/drachtio-modules \
+    && git init -q . \
+    && git remote add origin https://github.com/mdslaney/drachtio-freeswitch-modules.git \
+    && git fetch --depth 1 origin ${DRACHTIO_MODULES_REF} \
+    && git checkout -q FETCH_HEAD
 WORKDIR /usr/src/drachtio-modules/modules/mod_audio_fork
 ENV PKG_CONFIG_PATH=/usr/local/freeswitch/lib/pkgconfig:/usr/local/lib/pkgconfig
 RUN pkg-config --exists freeswitch && echo "freeswitch.pc OK" \
