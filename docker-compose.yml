@@ -62,6 +62,22 @@ services:
       - "5066:5066"       # SIP sobre WebSocket sin cifrar (queda de respaldo)
       - "7443:7443"       # SIP sobre WebSocket CIFRADO (wss://) — softphone del navegador
       - "16384-16584:16384-16584/udp"  # RTP (audio WebRTC del softphone)
+    labels:
+      - "traefik.enable=true"
+      # El softphone del navegador entra por wss://PBX_HOST/sip. Traefik
+      # termina el TLS y reenvía al ws SIN cifrar de FreeSWITCH (5066),
+      # no al 7443: si fuera al 7443 habría doble TLS y encima con el
+      # certificado autofirmado que FreeSWITCH se genera solo, que el
+      # navegador rechaza. Con esto el softphone usa el mismo
+      # certificado válido del panel.
+      - "traefik.http.routers.sipws.rule=Host(`${PBX_HOST:-pbx.localhost}`) && PathPrefix(`/sip`)"
+      - "traefik.http.routers.sipws.entrypoints=websecure"
+      - "traefik.http.routers.sipws.tls.certresolver=le"
+      # mod_sofia escucha en ":5066" sin path fijo, así que se le quita
+      # el /sip antes de reenviar y la conexión le llega en la raíz.
+      - "traefik.http.routers.sipws.middlewares=sip-strip"
+      - "traefik.http.middlewares.sip-strip.stripprefix.prefixes=/sip"
+      - "traefik.http.services.sipws.loadbalancer.server.port=5066"
     depends_on:
       backend:
         condition: service_healthy
@@ -123,10 +139,20 @@ services:
       # secreto (ver app/api/calls.py). FreeSWITCH NO usa este puerto:
       # le habla al backend por la red interna de Docker (backend:8000),
       # así que esto no afecta CDR, dialplan ni directorio.
-      # OJO: si alguna vez hay que entrar al panel desde otro equipo,
-      # este puerto y el 3005 del frontend tienen que volver a 0.0.0.0
-      # (o mejor, atarse a la IP LAN concreta).
+      # El acceso desde afuera entra por Traefik (labels de abajo); esto
+      # queda para diagnosticar la API sin pasar por el proxy.
       - "127.0.0.1:8001:8000"
+    labels:
+      - "traefik.enable=true"
+      # Solo /api y /ws salen a internet. /fs/* (directory, dialplan,
+      # cdr) queda DELIBERADAMENTE fuera: lo consume FreeSWITCH por la
+      # red interna de Docker, y aunque lleva secreto compartido, no hay
+      # ninguna razón para que sea alcanzable desde internet. Al no
+      # tener router, cae en el catch-all del panel y devuelve 404.
+      - "traefik.http.routers.api.rule=Host(`${PBX_HOST:-pbx.localhost}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`))"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=le"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -186,12 +212,20 @@ services:
     container_name: nspbx_frontend
     restart: unless-stopped
     ports:
-      # Mismo criterio que el backend: solo desde este servidor. Van
-      # juntos a propósito — el navegador arma la URL de la API con el
-      # host por el que entró (ver frontend/lib/api.ts), así que dejar
-      # el panel abierto en la LAN con la API cerrada daría una página
-      # que carga pero donde no se puede ni iniciar sesión.
+      # Solo desde este servidor. Con Traefik delante ya no hace falta
+      # publicarlo para el acceso normal (Traefik le habla por la red
+      # interna de Docker); se deja para poder diagnosticar el panel sin
+      # depender del proxy ni del DNS.
       - "127.0.0.1:3005:3000"
+    labels:
+      - "traefik.enable=true"
+      # Router "catch-all" del dominio: agarra todo lo que no matchearon
+      # los routers de mayor prioridad (API y softphone, abajo). Traefik
+      # ordena por longitud de regla, así que los de path van primero.
+      - "traefik.http.routers.panel.rule=Host(`${PBX_HOST:-pbx.localhost}`)"
+      - "traefik.http.routers.panel.entrypoints=websecure"
+      - "traefik.http.routers.panel.tls.certresolver=le"
+      - "traefik.http.services.panel.loadbalancer.server.port=3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -204,9 +238,64 @@ services:
     networks:
       - nspbx_net
 
+  # Punto de entrada HTTPS. Solo atiende HTTP: el SIP (5060) y el audio
+  # (RTP) NO pasan por acá — son UDP y con un reverse proxy de por medio
+  # el audio se rompe, así que FreeSWITCH sigue publicando esos puertos
+  # directo (ver su bloque `ports` más arriba).
+  traefik:
+    image: traefik:v3.3
+    container_name: nspbx_traefik
+    restart: unless-stopped
+    # Bajo perfil: NO arranca con un `docker compose up` normal. Solo
+    # con `docker compose --profile publico up -d`, que es cuando de
+    # verdad se quiere publicar en internet. Así el uso local (o el de
+    # este mismo servidor por 127.0.0.1) no depende de tener dominio,
+    # DNS ni certificados — y no queda un Traefik golpeando a Let's
+    # Encrypt por un dominio que todavía no existe.
+    profiles: ["publico"]
+    command:
+      - "--providers.docker=true"
+      # Sin esto, Traefik expondría TODO contenedor que vea. Así solo
+      # publica los que declaran `traefik.enable=true` a propósito.
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=nspbx_nspbx_net"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Todo HTTP se redirige a HTTPS: el panel maneja sesiones y
+      # credenciales SIP, no tiene sentido servirlo en claro.
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Sin ":?" a propósito: compose interpola TODO el archivo aunque
+      # este servicio esté bajo perfil y no se vaya a levantar, así que
+      # exigirlo acá rompía hasta un `docker compose build` local. Si
+      # queda vacío, Traefik falla al arrancar diciendo que el correo de
+      # ACME es obligatorio — el momento correcto para enterarse.
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL:-}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      # Desafío HTTP-01: requiere que el puerto 80 llegue desde internet
+      # a este equipo. Por eso el DNS del subdominio tiene que estar en
+      # "solo DNS" (nube gris) en Cloudflare: con el proxy naranja el
+      # desafío lo intercepta Cloudflare y la emisión falla.
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Solo lectura: Traefik necesita ver los contenedores y sus labels,
+      # no controlarlos. Montarlo rw le daría control total del host.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - nspbx_net
+
 volumes:
   pg_data:
   fs_scripts:
+  # Certificados emitidos por Let's Encrypt. En volumen y no en carpeta
+  # del host porque acme.json guarda la clave privada y exige permisos
+  # 600 estrictos, que en Windows no se pueden garantizar en un bind.
+  letsencrypt:
 
 networks:
   nspbx_net:
