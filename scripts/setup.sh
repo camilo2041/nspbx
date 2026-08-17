@@ -36,9 +36,32 @@ FS_XML_SECRET="$(gen 43)"
 AUTH_SECRET="$(gen 43)"
 POSTGRES_PASSWORD="$(gen 24)"
 
-read -rp "Subdominio del panel (ej. pbx.nspbxdevelop.com): " PBX_HOST
+# El host va SOLO como nombre, sin esquema ni barra ni ruta: se inserta
+# literal en la regla Host(`...`) de Traefik. Escrito como una URL
+# ("https://x.com/") la regla no coincide con NINGÚN pedido, así que
+# todo responde 404 y encima no se emite el certificado — sin ningún
+# error que explique por qué. Pasó en una instalación real, por eso se
+# normaliza acá en vez de confiar en cómo lo escriba cada uno.
+pedir_host() {
+  local v
+  while true; do
+    read -rp "Subdominio del panel (ej. pbx.nspbxdevelop.com): " v
+    v="${v#http://}"; v="${v#https://}"   # fuera el esquema
+    v="${v%%/*}"                           # fuera la barra y todo lo que siga
+    v="${v%%:*}"                           # fuera un puerto si lo pusieron
+    v="$(printf '%s' "$v" | tr -d '[:space:]')"
+    if printf '%s' "$v" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$'; then
+      PBX_HOST="$v"
+      return
+    fi
+    echo "  No parece un dominio válido. Escribilo sin https:// y sin barra final."
+  done
+}
+pedir_host
+echo "  Se usará: ${PBX_HOST}"
+
 read -rp "Nombre del certificatesResolver del Traefik existente [mi-resuelves-ssl]: " ACME_RESOLVER
-ACME_RESOLVER="${ACME_RESOLVER:-mi-resuelves-ssl}"
+ACME_RESOLVER="$(printf '%s' "${ACME_RESOLVER:-mi-resuelves-ssl}" | tr -d '[:space:]')"
 
 cat > .env <<EOF
 POSTGRES_USER=nspbx
