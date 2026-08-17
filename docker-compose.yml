@@ -181,9 +181,17 @@ services:
   # separarlo del backend. Misma imagen que "backend" (mismo Dockerfile,
   # mismo código), solo cambia el comando que arranca.
   voicebot:
-    # Sin "build:" propio: reutiliza la MISMA imagen que ya construyó el
-    # servicio "backend" (mismo Dockerfile, mismo código) — un solo build,
-    # dos contenedores, cada uno arrancando un comando distinto.
+    # Mismo código e imagen que "backend" (mismo Dockerfile, mismo
+    # contexto): un solo build, dos contenedores, cada uno arrancando un
+    # comando distinto. El segundo build sale de caché al instante.
+    #
+    # El `build:` es necesario aunque parezca redundante: sin él, en una
+    # máquina donde la imagen todavía no existe, compose intenta
+    # DESCARGARLA de Docker Hub y falla con "pull access denied" —
+    # nspbx-backend es local, no está publicada en ningún registro. En
+    # el equipo de desarrollo no se notaba porque la imagen ya estaba
+    # construida de antes.
+    build: ./backend
     image: nspbx-backend:latest
     container_name: nspbx_voicebot
     restart: unless-stopped

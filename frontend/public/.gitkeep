@@ -1,0 +1,11 @@
+# Este archivo existe solo para que la carpeta llegue al repositorio.
+#
+# Git no versiona carpetas vacías, así que en un clon limpio
+# frontend/public/ no existía y el build fallaba en:
+#   COPY --from=builder /app/public ./public
+#   -> "/app/public": not found
+#
+# En la máquina de desarrollo no se notaba porque la carpeta ya estaba
+# creada de antes. Next.js sirve desde acá los archivos estáticos
+# (favicon, imágenes); mientras esté vacía no cambia nada, pero la
+# carpeta tiene que existir.
