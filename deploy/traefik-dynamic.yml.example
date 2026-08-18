@@ -24,9 +24,9 @@
 # Ojo con FreeSWITCH: compartir la red no alcanza, además tiene que estar
 # ESCUCHANDO en ella. Como el contenedor está en dos redes, Traefik
 # resuelve nspbx_freeswitch a la IP de traefik-public, y sofia por
-# omisión ata el WebSocket solo a la IP del perfil (la de la red
+# omisión ata sus WebSockets solo a la IP del perfil (la de la red
 # interna): el resultado es un 502 que parece de ruteo pero es de
-# binding. Por eso ws-binding va en "0.0.0.0:5066" en
+# binding. Por eso ws-binding y wss-binding van en "0.0.0.0" en
 # freeswitch/conf/sip_profiles/internal.xml.
 
 http:
@@ -40,11 +40,20 @@ http:
       tls:
         certResolver: mi-resuelves-ssl
 
-    # Softphone del navegador (SIP sobre WebSocket). Apunta al ws SIN
-    # cifrar de FreeSWITCH (5066) y no al wss (7443): con el 7443 habría
-    # doble TLS, y encima con el certificado autofirmado que FreeSWITCH
-    # se genera solo, que el navegador rechaza. Así reusa el certificado
-    # válido del panel.
+    # Softphone del navegador (SIP sobre WebSocket). Apunta al wss de
+    # FreeSWITCH (7443) y NO al ws en claro (5066), aunque eso signifique
+    # cifrar dos veces. El motivo no es la seguridad sino el protocolo:
+    # el navegador habla wss://, así que SIP.js escribe
+    # "Via: SIP/2.0/WSS" en cada mensaje. Si Traefik lo entrega por el
+    # 5066 —un socket ws en claro—, sofia no encuentra transporte para
+    # responder y DESCARTA el mensaje sin decir nada: ni 401, ni error,
+    # ni línea en el log. El softphone se queda en "Conectando…" para
+    # siempre y no hay ninguna pista de por qué.
+    #
+    # Comprobado en aislamiento: mismo socket ws, mismo REGISTER, y lo
+    # único que cambia es el Via —"SIP/2.0/WS" devuelve 401 y
+    # "SIP/2.0/WSS" devuelve silencio—. Contra el 7443 con Via WSS
+    # vuelve el 401 normal.
     nspbx-sip:
       rule: "Host(`PBX_HOST`) && PathPrefix(`/sip`)"
       entryPoints: ["websecure"]
@@ -78,8 +87,18 @@ http:
           - url: "http://nspbx_backend:8000"
     nspbx-freeswitch:
       loadBalancer:
+        serversTransport: nspbx-fs-tls
         servers:
-          - url: "http://nspbx_freeswitch:5066"
+          - url: "https://nspbx_freeswitch:7443"
+
+  serversTransports:
+    # FreeSWITCH se autogenera wss.pem y no hay manera de que lo emita
+    # una CA pública: el destino es un nombre interno de Docker, no un
+    # dominio. Ese certificado lo ve únicamente Traefik, que va por la
+    # red interna; el navegador sigue viendo el certificado válido del
+    # panel. Por eso saltarse la verificación acá no expone nada.
+    nspbx-fs-tls:
+      insecureSkipVerify: true
 
 # NO se publica acá /fs/* (directory, dialplan, cdr): lo consume
 # FreeSWITCH por la red interna de Docker y no hay motivo para que sea

@@ -339,7 +339,12 @@
 
     <!-- for sip over secure websocket support -->
     <!-- You need wss.pem in $${certs_dir} for wss or one will be created for you -->
-    <param name="wss-binding" value=":7443"/>
+    <!-- 0.0.0.0 por lo mismo que ws-binding: el contenedor está en dos
+         redes y Traefik llega por la que no es la del perfil. Este es el
+         puerto al que apunta el softphone del panel — el 5066 NO sirve
+         para eso aunque parezca más simple, ver el porqué en
+         deploy/traefik-dynamic.yml.example. -->
+    <param name="wss-binding" value="0.0.0.0:7443"/>
 
     <!--<param name="delete-subs-on-register" value="false"/>-->
 
