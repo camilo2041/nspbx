@@ -20,6 +20,14 @@
 # REQUISITO: Traefik y los contenedores de NSPBX tienen que compartir la
 # red `traefik-public`. Los destinos de abajo se resuelven por nombre de
 # contenedor, que solo funciona dentro de esa red compartida.
+#
+# Ojo con FreeSWITCH: compartir la red no alcanza, además tiene que estar
+# ESCUCHANDO en ella. Como el contenedor está en dos redes, Traefik
+# resuelve nspbx_freeswitch a la IP de traefik-public, y sofia por
+# omisión ata el WebSocket solo a la IP del perfil (la de la red
+# interna): el resultado es un 502 que parece de ruteo pero es de
+# binding. Por eso ws-binding va en "0.0.0.0:5066" en
+# freeswitch/conf/sip_profiles/internal.xml.
 
 http:
   routers:
