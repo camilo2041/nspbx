@@ -1,0 +1,24 @@
+# Normalización de finales de línea.
+#
+# Los scripts .sh y los archivos que consume Linux DEBEN quedar con LF.
+# Con CRLF, bash falla con un error que no ayuda nada a entender la
+# causa: "$'\r': command not found" y "set: pipefail: invalid option
+# name" — parece un problema del script, no del formato del archivo.
+# Como se desarrolla en Windows (donde Git convierte a CRLF en la copia
+# de trabajo), sin esto un descuido puede dejar CRLF dentro del
+# repositorio y romper el despliegue en cualquier servidor.
+* text=auto eol=lf
+
+*.sh      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.xml     text eol=lf
+*.example text eol=lf
+Dockerfile text eol=lf
+
+# Binarios: que Git no toque nada.
+*.wav binary
+*.png binary
+*.jpg binary
+*.gz  binary
+*.ico binary

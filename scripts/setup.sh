@@ -119,6 +119,27 @@ for f in event_socket.conf.xml xml_curl.conf.xml json_cdr.conf.xml; do
   echo "  $f generado."
 done
 
+# vars.xml: lleva la IP PÚBLICA de ESTE servidor. Se detecta sola porque
+# escrita a mano es justo lo que rompe una mudanza: al mover el sistema,
+# FreeSWITCH seguía anunciando la IP del equipo anterior, el proveedor
+# respondía a una dirección ajena y el REGISTER moría por timeout con un
+# 503 genérico que no dice nada del motivo.
+#
+# Se detecta acá y no por STUN en tiempo de ejecución: STUN acierta la
+# IP pero devuelve el puerto de SU sesión NAT (ej. 2648) en vez del
+# publicado (5080), y entonces el registro funciona pero las llamadas
+# ENTRANTES se dirigen a un puerto que nadie escucha.
+if [ -f freeswitch/conf/vars.xml ]; then
+  echo "  vars.xml ya existe — no se toca."
+else
+  IP_PUB="$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)"
+  if [ -z "$IP_PUB" ]; then
+    read -rp "  No pude detectar la IP pública. Escribila a mano: " IP_PUB
+  fi
+  sed "s|REEMPLAZAR_POR_IP_PUBLICA|${IP_PUB}|g" freeswitch/conf/vars.xml.example > freeswitch/conf/vars.xml
+  echo "  vars.xml generado con IP pública ${IP_PUB}."
+fi
+
 # Carpetas que el compose monta desde el host. Si no existen, Docker las
 # crea como root y después el backend no puede escribir dentro.
 mkdir -p backups freeswitch/recordings freeswitch/certs

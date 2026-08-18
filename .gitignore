@@ -12,6 +12,14 @@ freeswitch/conf/autoload_configs/event_socket.conf.xml
 freeswitch/conf/autoload_configs/xml_curl.conf.xml
 freeswitch/conf/autoload_configs/json_cdr.conf.xml
 
+# vars.xml lleva la IP PÚBLICA de este servidor concreto (las variables
+# external_sip_ip / external_rtp_ip / webrtc_ext_ip). Versionarlo hacía
+# que una instalación nueva arrancara anunciando la IP de OTRA máquina:
+# el proveedor respondía a una dirección ajena, el REGISTER moría por
+# timeout y el síntoma era un 503 genérico que no apunta a la causa.
+# Se versiona vars.xml.example y setup.sh lo genera con la IP detectada.
+freeswitch/conf/vars.xml
+
 # Troncales SIP: las genera el backend a partir de la base de datos
 # (ver backend/app/services/gateways.py) y contienen la CONTRASEÑA del
 # proveedor en texto plano. Si se filtran, cualquiera puede cursar

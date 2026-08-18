@@ -306,29 +306,41 @@
        If unspecified, the bind_server_ip value is used.
        Used by: sofia.conf.xml dingaling.conf.xml
   -->
-  <!-- IP PÚBLICA real de esta máquina (no la LAN, no loopback) — es lo que
-       el proveedor de troncal necesita conocer para poder enrutar
-       llamadas ENTRANTES de vuelta. Antes estaba en 127.0.0.1: eso dejaba
-       el registro en "REGED" (el proveedor no valida que el Contact sea
-       alcanzable) pero le decía "mandame las llamadas a mi propio
-       loopback" — de ahí el "ocupado" en llamadas entrantes reales,
-       confirmado viendo el Contact anunciado con `sofia status gateway
-       external::PR`. La IP LAN (192.168.0.27, ver webrtc_ext_ip abajo)
-       tampoco sirve acá: es privada, no la puede alcanzar nadie desde
-       internet. Si la IP pública cambia (IP dinámica del ISP) hay que
-       actualizar este valor a mano. -->
-  <X-PRE-PROCESS cmd="set" data="external_rtp_ip=181.53.96.12"/>
+  <!-- IP PÚBLICA de esta máquina (no la LAN, no loopback) — es lo que el
+       proveedor de troncal necesita conocer para enrutar de vuelta las
+       llamadas ENTRANTES. Con 127.0.0.1 el registro igual queda "REGED"
+       (el proveedor no valida que el Contact sea alcanzable) pero le
+       estás diciendo "mandame las llamadas a mi propio loopback" — de
+       ahí el "ocupado" en entrantes reales.
 
-  <!-- IP LAN real de esta máquina, SOLO para el perfil "internal" (softphone
-       WebRTC del navegador). 127.0.0.1 no sirve ahí: los navegadores
-       descartan por seguridad cualquier candidato ICE de loopback que venga
-       de un peer remoto, así que el navegador nunca intenta conectar y el
-       handshake DTLS-SRTP se queda colgado (confirmado con captura de
-       paquetes: FreeSWITCH manda el ClientHello en bucle, cero respuesta).
-       Cambia esto por la IP LAN real de tu equipo/servidor (`ipconfig`/`ip
-       addr`) o por el dominio/IP pública si despliegas en un servidor
-       accesible por red. -->
-  <X-PRE-PROCESS cmd="set" data="webrtc_ext_ip=192.168.0.27"/>
+       Se detecta sola por STUN en vez de estar escrita a mano. Estuvo
+       fija con la IP de un servidor concreto y eso hizo que, al mover
+       el sistema a otro lado, FreeSWITCH siguiera anunciando la IP
+       vieja: el proveedor respondía a una dirección ajena, el REGISTER
+       moría por timeout y el error que se veía era un 503 genérico que
+       no apuntaba a la causa. Con STUN funciona igual detrás de NAT
+       casera que en un VPS con IP pública directa, sin editar nada.
+
+       Si preferís fijarla (o no querés depender de un STUN externo),
+       reemplazá por la IP pública: data="external_rtp_ip=1.2.3.4" -->
+  <X-PRE-PROCESS cmd="set" data="external_rtp_ip=REEMPLAZAR_POR_IP_PUBLICA"/>
+
+  <!-- Dirección que anuncia el perfil "internal" (softphone WebRTC del
+       navegador). 127.0.0.1 no sirve: los navegadores descartan por
+       seguridad cualquier candidato ICE de loopback que venga de un peer
+       remoto, así que nunca intentan conectar y el handshake DTLS-SRTP
+       se queda colgado (confirmado con captura: FreeSWITCH manda el
+       ClientHello en bucle, cero respuesta).
+
+       También por STUN, por el mismo motivo que las de arriba: acá
+       estaba fija la IP LAN de una máquina puntual, que en cualquier
+       otro servidor simplemente no existe.
+
+       OJO si el softphone se usa SOLO dentro de una LAN y el equipo no
+       tiene IP pública propia: ahí conviene fijar la IP LAN a mano
+       (data="webrtc_ext_ip=192.168.1.50"), porque anunciar la pública
+       obliga a que el router haga hairpin NAT y no todos lo hacen. -->
+  <X-PRE-PROCESS cmd="set" data="webrtc_ext_ip=REEMPLAZAR_POR_IP_PUBLICA"/>
 
   <!-- external_sip_ip
       Used as the public IP address for SDP.
@@ -341,7 +353,9 @@
        If unspecified, the bind_server_ip value is used.
        Used by: sofia.conf.xml dingaling.conf.xml
   -->
-  <X-PRE-PROCESS cmd="set" data="external_sip_ip=181.53.96.12"/>
+  <!-- Mismo criterio que external_rtp_ip: autodetección por STUN en vez
+       de una IP fija que solo es válida en un servidor. -->
+  <X-PRE-PROCESS cmd="set" data="external_sip_ip=REEMPLAZAR_POR_IP_PUBLICA"/>
 
   <!-- unroll-loops
        Used to turn on sip loopback unrolling.

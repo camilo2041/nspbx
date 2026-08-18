@@ -47,7 +47,27 @@ else
   falla "secreto XML NO coincide (.env=${XML_ENV:0:8}… xml_curl=${XML_CURL:0:8}… json_cdr=${XML_CDR:0:8}…)"
 fi
 
-titulo "3. Base de datos"
+titulo "3. IP pública anunciada"
+# El fallo más caro de diagnosticar de toda la migración: vars.xml venía
+# con la IP del servidor anterior, FreeSWITCH la anunciaba en el Contact,
+# el proveedor respondía a una dirección ajena y el REGISTER moría por
+# timeout mostrando un 503 que no menciona nada de esto.
+IP_REAL=$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null)
+# Solo las líneas X-PRE-PROCESS reales: los comentarios del archivo traen
+# ejemplos como data="external_rtp_ip=1.2.3.4" y un grep suelto los
+# tomaría como si fueran la configuración vigente.
+IP_CFG=$(grep -oE '<X-PRE-PROCESS[^>]*external_sip_ip=[^"]+' freeswitch/conf/vars.xml 2>/dev/null | sed 's/.*external_sip_ip=//')
+if [ -z "$IP_CFG" ]; then
+  falla "no se pudo leer external_sip_ip de vars.xml"
+elif [ "$IP_CFG" = "REEMPLAZAR_POR_IP_PUBLICA" ]; then
+  falla "vars.xml sin configurar — corré: bash scripts/setup.sh"
+elif [ -n "$IP_REAL" ] && [ "$IP_CFG" != "$IP_REAL" ]; then
+  falla "vars.xml anuncia $IP_CFG pero la IP real es $IP_REAL (¿se movió de servidor?)"
+else
+  ok "vars.xml anuncia la IP correcta ($IP_CFG)"
+fi
+
+titulo "4. Base de datos"
 if docker exec nspbx_postgres pg_isready -U "${POSTGRES_USER:-nspbx}" >/dev/null 2>&1; then
   ok "postgres acepta conexiones"
   for t in users extensions trunks appointments call_logs; do
@@ -58,7 +78,7 @@ else
   falla "postgres no responde"
 fi
 
-titulo "4. FreeSWITCH (ESL) y troncales"
+titulo "5. FreeSWITCH (ESL) y troncales"
 ESL_OUT=$(docker exec nspbx_backend python -c "
 import asyncio,sys; sys.path.insert(0,'/app')
 from app.services import esl
@@ -91,7 +111,7 @@ else
   falla "el backend no puede hablar con FreeSWITCH por ESL"
 fi
 
-titulo "5. Publicación web"
+titulo "6. Publicación web"
 HOST=$(grep '^PBX_HOST=' .env 2>/dev/null | cut -d= -f2-)
 if [ -z "$HOST" ]; then
   aviso "PBX_HOST no está en .env — se omite el chequeo web"

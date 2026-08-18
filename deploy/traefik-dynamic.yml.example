@@ -1,0 +1,83 @@
+# Rutas de NSPBX para un Traefik YA EXISTENTE en el servidor.
+#
+# Copiar a la carpeta del "file provider" de ese Traefik (la que declara
+# en --providers.file.directory), reemplazando el dominio:
+#
+#   sed 's/PBX_HOST/nspbx.tudominio.com/g' deploy/traefik-dynamic.yml.example \
+#     > /etc/dokploy/traefik/dynamic/nspbx.yml
+#
+# Con --providers.file.watch=true lo toma solo, sin reiniciar nada.
+#
+# ¿Por qué esto y no las labels del docker-compose?
+# Las labels dependen del provider de Docker de Traefik. En el servidor
+# donde se desplegó, ese provider está roto: Traefik negocia la API del
+# demonio en la versión 1.24 y el Docker instalado exige 1.40 como
+# mínimo, así que Traefik no ve NINGÚN contenedor y no arma ninguna
+# ruta. Con el file provider las rutas están escritas a mano y no
+# dependen de esa conexión. Las labels del compose quedan igual: si el
+# provider de Docker se arregla, funcionan sin tocar nada.
+#
+# REQUISITO: Traefik y los contenedores de NSPBX tienen que compartir la
+# red `traefik-public`. Los destinos de abajo se resuelven por nombre de
+# contenedor, que solo funciona dentro de esa red compartida.
+
+http:
+  routers:
+    # Traefik ordena por longitud de regla, así que estas dos (más
+    # específicas) ganan sobre el catch-all del panel.
+    nspbx-api:
+      rule: "Host(`PBX_HOST`) && (PathPrefix(`/api`) || PathPrefix(`/ws`))"
+      entryPoints: ["websecure"]
+      service: nspbx-backend
+      tls:
+        certResolver: mi-resuelves-ssl
+
+    # Softphone del navegador (SIP sobre WebSocket). Apunta al ws SIN
+    # cifrar de FreeSWITCH (5066) y no al wss (7443): con el 7443 habría
+    # doble TLS, y encima con el certificado autofirmado que FreeSWITCH
+    # se genera solo, que el navegador rechaza. Así reusa el certificado
+    # válido del panel.
+    nspbx-sip:
+      rule: "Host(`PBX_HOST`) && PathPrefix(`/sip`)"
+      entryPoints: ["websecure"]
+      service: nspbx-freeswitch
+      middlewares: ["nspbx-sip-strip"]
+      tls:
+        certResolver: mi-resuelves-ssl
+
+    nspbx-panel:
+      rule: "Host(`PBX_HOST`)"
+      entryPoints: ["websecure"]
+      service: nspbx-frontend
+      tls:
+        certResolver: mi-resuelves-ssl
+
+  middlewares:
+    # mod_sofia escucha en ":5066" sin path fijo, así que se le quita el
+    # /sip antes de reenviar y la conexión le llega en la raíz.
+    nspbx-sip-strip:
+      stripPrefix:
+        prefixes: ["/sip"]
+
+  services:
+    nspbx-frontend:
+      loadBalancer:
+        servers:
+          - url: "http://nspbx_frontend:3000"
+    nspbx-backend:
+      loadBalancer:
+        servers:
+          - url: "http://nspbx_backend:8000"
+    nspbx-freeswitch:
+      loadBalancer:
+        servers:
+          - url: "http://nspbx_freeswitch:5066"
+
+# NO se publica acá /fs/* (directory, dialplan, cdr): lo consume
+# FreeSWITCH por la red interna de Docker y no hay motivo para que sea
+# alcanzable desde internet, aunque lleve secreto compartido. Al no
+# tener router propio cae en el catch-all del panel y devuelve 404.
+#
+# El SIP (5060) y el audio (RTP, 16384-16584) TAMPOCO pasan por Traefik:
+# son UDP y con un reverse proxy HTTP de por medio el audio se rompe.
+# Esos puertos se publican directo desde el contenedor de FreeSWITCH.
