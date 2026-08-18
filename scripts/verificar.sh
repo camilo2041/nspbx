@@ -101,9 +101,14 @@ if [ -n "$ESL_OUT" ]; then
   ok "ESL responde ($(echo "$ESL_OUT" | grep VERSION | cut -d' ' -f2-))"
   ok "llamadas activas: $(echo "$ESL_OUT" | grep SESIONES | awk '{print $2}')"
   if echo "$ESL_OUT" | grep -q TRUNK; then
-    echo "$ESL_OUT" | grep TRUNK | while read -r _ N E; do
+    # Sustitución de proceso y NO "... | while": con una tubería, bash
+    # corre el while en un SUBSHELL y el incremento de FALLAS se pierde
+    # al salir de él. El script mostraba la troncal caída con ✗ y aun
+    # así cerraba con "Todo en orden" y código de salida 0 — es decir,
+    # aprobaba una instalación rota.
+    while read -r _ N E; do
       [ "$E" = "REGED" ] && ok "troncal $N registrada" || falla "troncal $N en estado '$E'"
-    done
+    done < <(echo "$ESL_OUT" | grep TRUNK)
   else
     aviso "no hay troncales cargadas todavía"
   fi
