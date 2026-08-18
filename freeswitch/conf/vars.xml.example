@@ -469,7 +469,23 @@
 
   <!-- External SIP Profile -->
   <X-PRE-PROCESS cmd="set" data="external_auth_calls=false"/>
-  <X-PRE-PROCESS cmd="set" data="external_sip_port=5080"/>
+  <!-- 15080 y NO el 5080 clásico: muchos firewalls (sobre todo los
+       corporativos) traen un "SIP ALG" que inspecciona y reescribe todo
+       el tráfico que reconoce como SIP por los puertos conocidos
+       (5060-5080). Ese módulo suele romper el registro sin dejar rastro
+       útil.
+
+       Comprobado en vivo: con el puerto 5080, el REGISTER salía del
+       servidor (visible con tcpdump en la interfaz del host) y NUNCA
+       volvía respuesta, mientras FreeSWITCH reportaba un 503 genérico
+       que él mismo generaba por timeout. Con el mismo destino, mismas
+       credenciales y misma red, un OPTIONS enviado desde un puerto de
+       origen aleatorio SÍ recibía 200 OK. Al mover este puerto a 15080
+       el gateway registró de inmediato.
+
+       Si se cambia, hay que cambiarlo también en el `ports:` del
+       docker-compose.yml. -->
+  <X-PRE-PROCESS cmd="set" data="external_sip_port=15080"/>
   <X-PRE-PROCESS cmd="set" data="external_tls_port=5081"/>
   <X-PRE-PROCESS cmd="set" data="external_ssl_enable=false"/>
 

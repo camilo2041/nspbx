@@ -67,6 +67,19 @@ else
   ok "vars.xml anuncia la IP correcta ($IP_CFG)"
 fi
 
+  # El puerto de señalización tiene que coincidir entre vars.xml y el
+  # compose. Si no, FreeSWITCH manda desde un puerto que Docker no
+  # publica y las llamadas ENTRANTES no llegan (el registro saliente sí
+  # funciona, así que el problema aparece recién con la primera llamada).
+  PUERTO_FS=$(grep -oE '<X-PRE-PROCESS[^>]*external_sip_port=[^"]+' freeswitch/conf/vars.xml 2>/dev/null | sed 's/.*external_sip_port=//')
+  if [ -n "$PUERTO_FS" ]; then
+    if grep -q "\"${PUERTO_FS}:${PUERTO_FS}/udp\"" docker-compose.yml 2>/dev/null; then
+      ok "puerto SIP saliente $PUERTO_FS publicado en el compose"
+    else
+      falla "vars.xml usa el puerto $PUERTO_FS pero el compose no lo publica"
+    fi
+  fi
+
 titulo "4. Base de datos"
 if docker exec nspbx_postgres pg_isready -U "${POSTGRES_USER:-nspbx}" >/dev/null 2>&1; then
   ok "postgres acepta conexiones"

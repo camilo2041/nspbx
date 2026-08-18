@@ -49,7 +49,14 @@ services:
     ports:
       - "5060:5060/udp"
       - "5060:5060/tcp"
-      - "5080:5080/udp"
+      # Señalización SIP saliente (perfil "external"). En 15080 y no en
+      # el 5080 clásico para esquivar el SIP ALG de los firewalls
+      # corporativos, que reescribe el tráfico SIP de los puertos
+      # conocidos y rompe el registro: comprobado con tcpdump — el
+      # REGISTER salía y jamás volvía respuesta, y al mover el puerto
+      # registró al instante. Tiene que coincidir con
+      # external_sip_port de freeswitch/conf/vars.xml.
+      - "15080:15080/udp"
       # 8021 (ESL) NO se publica al host: es el socket de control que
       # permite originar llamadas, leer canales y ejecutar comandos —
       # con la contraseña de fábrica ("ClueCon") es el vector de fraude
