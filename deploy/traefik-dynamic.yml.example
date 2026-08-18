@@ -3,8 +3,14 @@
 # Copiar a la carpeta del "file provider" de ese Traefik (la que declara
 # en --providers.file.directory), reemplazando el dominio:
 #
-#   sed 's/PBX_HOST/nspbx.tudominio.com/g' deploy/traefik-dynamic.yml.example \
+#   sed -e 's/PBX_HOST/nspbx.tudominio.com/g' \
+#       -e 's/TURN_HOST/turn.nspbx.tudominio.com/g' \
+#       deploy/traefik-dynamic.yml.example \
 #     > /etc/dokploy/traefik/dynamic/nspbx.yml
+#
+# Los dos nombres tienen que coincidir EXACTO con PBX_HOST y TURN_HOST
+# del .env: el primero es el que valida Traefik contra la cabecera Host,
+# y el segundo el que el navegador pide por SNI al abrir el relay.
 #
 # Con --providers.file.watch=true lo toma solo, sin reiniciar nada.
 #
@@ -92,6 +98,7 @@ http:
           - url: "https://nspbx_freeswitch:7443"
 
   serversTransports:
+
     # FreeSWITCH se autogenera wss.pem y no hay manera de que lo emita
     # una CA pública: el destino es un nombre interno de Docker, no un
     # dominio. Ese certificado lo ve únicamente Traefik, que va por la
@@ -99,6 +106,37 @@ http:
     # panel. Por eso saltarse la verificación acá no expone nada.
     nspbx-fs-tls:
       insecureSkipVerify: true
+
+# ----------------------------------------------------------------------
+# Relay de audio (TURN). Va en la sección `tcp:` y no en `http:` porque
+# TURN no es HTTP: adentro del TLS viaja su propio protocolo binario.
+#
+# Traefik puede atender los dos en el MISMO 443 porque separa por SNI:
+# si el nombre pedido es TURN_HOST, gana este router TCP; para
+# cualquier otro sigue mandando el `http:` de arriba. Por eso el relay
+# no necesita ningún puerto nuevo abierto en el firewall, que es todo
+# el punto: en la red donde se desplegó esto, 443 es lo único que pasa.
+#
+# En el DNS, TURN_HOST tiene que ser un registro A a la IP pública con
+# el proxy de Cloudflare APAGADO (nube gris). Con el proxy naranja,
+# Cloudflare solo reenvía HTTP y descarta esta conexión.
+tcp:
+  routers:
+    nspbx-turn:
+      rule: "HostSNI(`TURN_HOST`)"
+      entryPoints: ["websecure"]
+      service: nspbx-coturn
+      tls:
+        certResolver: mi-resuelves-ssl
+
+  services:
+    nspbx-coturn:
+      loadBalancer:
+        servers:
+          # Sin TLS: Traefik ya lo desarmó. coturn escucha TURN en claro
+          # en el 3478 y ese puerto no está publicado — solo se llega por
+          # la red de Docker.
+          - address: "nspbx_coturn:3478"
 
 # NO se publica acá /fs/* (directory, dialplan, cdr): lo consume
 # FreeSWITCH por la red interna de Docker y no hay motivo para que sea

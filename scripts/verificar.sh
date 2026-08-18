@@ -74,21 +74,45 @@ fi
 # Resultado: la troncal registraba, las llamadas entraban, el softphone
 # se registraba — y el audio del navegador se iba a una dirección
 # inalcanzable. Este chequeo decía "Todo en orden" mientras pasaba.
-for VAR in external_rtp_ip webrtc_ext_ip; do
-  V=$(grep -oE "<X-PRE-PROCESS[^>]*${VAR}=[^\"]+" freeswitch/conf/vars.xml 2>/dev/null | sed "s/.*${VAR}=//")
-  if [ -z "$V" ]; then
-    falla "no se pudo leer $VAR de vars.xml"
-  elif [ "$V" = "REEMPLAZAR_POR_IP_PUBLICA" ]; then
-    falla "$VAR sin configurar — corré: bash scripts/setup.sh"
-  elif [ -n "$IP_REAL" ] && [ "$V" != "$IP_REAL" ]; then
-    # La excepción legítima: un softphone usado SOLO dentro de la LAN
-    # anda mejor con la IP LAN, porque anunciar la pública obliga al
-    # router a hacer hairpin NAT. Si ese es tu caso, ignorá este aviso.
-    falla "$VAR es $V pero la IP real es $IP_REAL (sin audio fuera de la LAN)"
-  else
-    ok "$VAR correcto ($V)"
-  fi
-done
+V=$(grep -oE '<X-PRE-PROCESS[^>]*external_rtp_ip=[^"]+' freeswitch/conf/vars.xml 2>/dev/null | sed 's/.*external_rtp_ip=//')
+if [ -z "$V" ]; then
+  falla "no se pudo leer external_rtp_ip de vars.xml"
+elif [ -n "$IP_REAL" ] && [ "$V" != "$IP_REAL" ]; then
+  falla "external_rtp_ip es $V pero la IP real es $IP_REAL (llamadas sin audio)"
+else
+  ok "external_rtp_ip correcto ($V)"
+fi
+
+# webrtc_ext_ip es la dirección que se le anuncia al NAVEGADOR, y lo que
+# tiene que valer depende de si hay relay TURN o no. Son dos modos
+# opuestos y poner el valor del otro deja la llamada muda:
+#
+#   sin TURN  -> el navegador manda el audio él mismo, así que necesita
+#                la IP PÚBLICA. Requiere el rango UDP abierto.
+#   con TURN  -> quien entrega el audio es coturn, que vive DENTRO de la
+#                red de Docker. Si le anunciamos la IP pública, le
+#                mandaría el audio a la IP pública de su propia red y el
+#                router tendría que hacer hairpin NAT — que es justo lo
+#                que el relay viene a evitar. Va $${local_ip_v4}, que
+#                FreeSWITCH resuelve a su IP de contenedor.
+W=$(grep -oE '<X-PRE-PROCESS[^>]*webrtc_ext_ip=[^"]+' freeswitch/conf/vars.xml 2>/dev/null | sed 's/.*webrtc_ext_ip=//')
+TURN_CFG=$(grep '^TURN_SECRET=' .env 2>/dev/null | cut -d= -f2-)
+if [ -z "$W" ]; then
+  falla "no se pudo leer webrtc_ext_ip de vars.xml"
+elif [ -n "$TURN_CFG" ]; then
+  case "$W" in
+    '$${local_ip_v4}'|10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*)
+      ok "webrtc_ext_ip apunta hacia adentro ($W), correcto con TURN" ;;
+    *)
+      falla "hay TURN configurado pero webrtc_ext_ip es $W: coturn no puede entregarle el audio a una IP pública desde adentro. Poné \$\${local_ip_v4}" ;;
+  esac
+elif [ "$W" = "REEMPLAZAR_POR_IP_PUBLICA" ]; then
+  falla "webrtc_ext_ip sin configurar — corré: bash scripts/setup.sh"
+elif [ -n "$IP_REAL" ] && [ "$W" != "$IP_REAL" ]; then
+  falla "webrtc_ext_ip es $W pero la IP real es $IP_REAL (softphone sin audio fuera de la LAN)"
+else
+  ok "webrtc_ext_ip correcto ($W)"
+fi
 
   # El puerto de señalización tiene que coincidir entre vars.xml y el
   # compose. Si no, FreeSWITCH manda desde un puerto que Docker no

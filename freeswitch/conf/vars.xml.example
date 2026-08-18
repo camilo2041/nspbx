@@ -339,7 +339,20 @@
        OJO si el softphone se usa SOLO dentro de una LAN y el equipo no
        tiene IP pública propia: ahí conviene fijar la IP LAN a mano
        (data="webrtc_ext_ip=192.168.1.50"), porque anunciar la pública
-       obliga a que el router haga hairpin NAT y no todos lo hacen. -->
+       obliga a que el router haga hairpin NAT y no todos lo hacen.
+
+       Y OJO TAMBIÉN si activaste el relay TURN (TURN_SECRET en .env):
+       ahí este valor tiene que ser justamente el CONTRARIO. Con relay,
+       quien entrega el audio ya no es el navegador sino coturn, que
+       corre DENTRO de la red de Docker; anunciarle la IP pública lo
+       obligaría a mandar el audio a la IP pública de su propia red y a
+       depender del hairpin NAT, que es exactamente lo que el relay vino
+       a evitar. En ese caso va:
+
+           data="webrtc_ext_ip=$${local_ip_v4}"
+
+       que FreeSWITCH resuelve solo a su IP de contenedor. scripts/verificar.sh
+       comprueba que este valor y TURN_SECRET no se contradigan. -->
   <X-PRE-PROCESS cmd="set" data="webrtc_ext_ip=REEMPLAZAR_POR_IP_PUBLICA"/>
 
   <!-- external_sip_ip

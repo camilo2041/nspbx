@@ -362,4 +362,9 @@ export interface MiEntorno {
   sip_ws_url: string | null;
   sip_server_ip: string | null;
   sip_server_port: number | null;
+  // STUN siempre; TURN solo si está configurado en el servidor. Las
+  // credenciales vienen firmadas y con vencimiento, así que esta lista
+  // no se cachea ni se guarda: se pide junto con el resto del entorno
+  // cada vez que el softphone arranca.
+  ice_servers: RTCIceServer[] | null;
 }

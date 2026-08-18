@@ -60,6 +60,7 @@ FS_ESL_PASSWORD="$(gen 32)"
 FS_XML_SECRET="$(gen 43)"
 AUTH_SECRET="$(gen 43)"
 POSTGRES_PASSWORD="$(gen 24)"
+TURN_SECRET="$(gen 43)"
 
 # El host va SOLO como nombre, sin esquema ni barra ni ruta: se inserta
 # literal en la regla Host(`...`) de Traefik. Escrito como una URL
@@ -99,6 +100,12 @@ AUTH_SECRET=${AUTH_SECRET}
 
 PBX_HOST=${PBX_HOST}
 ACME_RESOLVER=${ACME_RESOLVER}
+
+# Relay de audio del softphone. Queda listo pero NO funciona hasta que
+# exista el registro DNS de TURN_HOST apuntando a este servidor, con el
+# proxy de Cloudflare APAGADO (nube gris). Ver .env.example.
+TURN_SECRET=${TURN_SECRET}
+TURN_HOST=turn.${PBX_HOST}
 
 # Vacío: la contraseña del admin se genera en el primer arranque y sale
 # en el log --> docker compose logs backend | grep -A5 "Usuario inicial"

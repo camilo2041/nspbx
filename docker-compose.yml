@@ -141,6 +141,14 @@ services:
       # Solo se usa la primera vez, para crear el usuario "admin". Si se
       # deja vacío, la contraseña se genera y sale en el log del arranque.
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Relay de audio. El mismo secreto que recibe coturn: con él el
+      # backend firma credenciales que caducan, en vez de repartir una
+      # contraseña fija. Vacío = sin relay, el softphone usa solo STUN.
+      TURN_SECRET: ${TURN_SECRET:-}
+      # Dominio por el que el NAVEGADOR alcanza el relay. Va aparte de
+      # PBX_HOST porque en el DNS tienen que ser distintos: este NO puede
+      # estar detrás del proxy de Cloudflare (ver .env.example).
+      TURN_HOST: ${TURN_HOST:-}
     volumes:
       - ./freeswitch/conf:/freeswitch-conf
       - ./freeswitch/sounds:/freeswitch-sounds
@@ -275,6 +283,56 @@ services:
       - nspbx_net
       # Traefik (el de Dokploy) vive en esta red y solo alcanza a los
       # contenedores que estén en ella.
+      - traefik-public
+
+  # Relay de audio para el softphone del navegador. Solo hace falta
+  # cuando la red del usuario no deja pasar el UDP del RTP — que es lo
+  # habitual fuera de una LAN: oficinas de clientes, hoteles, datos
+  # móviles y redes corporativas suelen abrir 80 y 443 y nada más.
+  # Sin relay la llamada conecta y se queda muda, que es el síntoma más
+  # confuso posible porque la señalización funciona perfecto.
+  #
+  # Se activa solo si TURN_SECRET tiene valor; sin eso el backend manda
+  # únicamente STUN y el audio va directo (ver app/services/turn.py).
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    container_name: nspbx_coturn
+    restart: unless-stopped
+    # NO publica ningún puerto, a propósito. El navegador entra por el
+    # 443 de Traefik (que ya está abierto) y Traefik le habla a este
+    # contenedor por la red de Docker; el audio relayado sale hacia
+    # FreeSWITCH por la red interna. Nada de esto necesita que el
+    # firewall abra un puerto nuevo, que es justamente el motivo de
+    # existir del relay.
+    command:
+      - -n                                   # sin archivo de config: todo acá
+      - --log-file=stdout
+      - --listening-port=3478                # TURN en claro; el TLS lo pone Traefik
+      - --fingerprint
+      - --use-auth-secret                     # sin base de usuarios: valida firmas
+      - --static-auth-secret=${TURN_SECRET:-}
+      - --realm=${PBX_HOST:-pbx.localhost}
+      # Rango de puertos del relay. Son internos (coturn -> FreeSWITCH),
+      # así que no se publican ni hay que abrirlos: cada llamada usa uno.
+      - --min-port=49160
+      - --max-port=49260
+      # Endurecimiento: sin multicast ni loopback como destino, para que
+      # nadie use el relay para alcanzar servicios internos del servidor.
+      - --no-multicast-peers
+      - --denied-peer-ip=127.0.0.1
+      - --no-cli
+      - --no-tlsv1
+      - --no-tlsv1_1
+    healthcheck:
+      test: ["CMD-SHELL", "netstat -tln | grep -q ':3478 '"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      # nspbx_net para entregarle el audio a FreeSWITCH.
+      - nspbx_net
+      # traefik-public para que Traefik pueda alcanzarlo.
       - traefik-public
 
 volumes:

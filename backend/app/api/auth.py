@@ -16,7 +16,7 @@ from app.core.database import get_session
 from app.core.security import crear_token, hash_password, verificar_password
 from app.models import SystemSettings, User
 from app.schemas import CambiarPasswordRequest, LoginRequest, SesionOut, UserOut
-from app.services import esl
+from app.services import esl, turn
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +131,9 @@ async def mi_entorno(
         }
     return {
         "extension": extension,
+        # Se calculan por pedido y no se guardan: llevan firma con
+        # vencimiento, así que una lista cacheada quedaría inservible.
+        "ice_servers": turn.ice_servers(usuario.extension.number if usuario.extension else usuario.username),
         "fs_domain": ajustes.fs_domain if ajustes else None,
         "sip_ws_url": ajustes.sip_ws_url if ajustes else None,
         "sip_server_ip": ajustes.sip_server_ip if ajustes else None,

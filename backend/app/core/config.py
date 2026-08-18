@@ -70,5 +70,25 @@ class Settings(BaseSettings):
     sip_server_ip: str = "192.168.100.6"
     sip_server_port: int = 5060
 
+    # --- TURN (relay de audio para el softphone del navegador) --------
+    # El audio de WebRTC viaja por UDP directo al contenedor de
+    # FreeSWITCH. Muchas redes —oficinas de clientes, hoteles, datos
+    # móviles, y la propia empresa donde corre esto— solo dejan salir
+    # 80 y 443, así que ese UDP nunca llega y la llamada conecta muda.
+    # Con TURN el navegador manda el audio al relay por TCP/443 (lo
+    # único abierto) y coturn se lo entrega a FreeSWITCH por la red
+    # interna de Docker.
+    #
+    # Vacío = desactivado: el softphone usa solo STUN y el audio va
+    # directo. Sirve en LAN o con los puertos UDP abiertos.
+    turn_host: str = ""
+    # El mismo valor que --static-auth-secret de coturn. Con él el
+    # backend firma credenciales de un solo uso; nunca se manda al
+    # navegador el secreto en sí, solo una firma que caduca.
+    turn_secret: str = ""
+    # Cuánto vale la credencial firmada. Corta a propósito: solo tiene
+    # que durar lo que tarda en establecerse la llamada, no la llamada.
+    turn_ttl_segundos: int = 3600
+
 
 settings = Settings()

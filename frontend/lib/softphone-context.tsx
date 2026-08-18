@@ -355,7 +355,14 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
         sessionDescriptionHandlerFactoryOptions: {
           iceGatheringTimeout: 1500,
           peerConnectionConfiguration: {
-            iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }],
+            // Los manda el backend (ver app/services/turn.py): STUN
+            // solo, o STUN + TURN si hay relay configurado. La lista
+            // fija queda de respaldo por si el backend es viejo y no
+            // trae el campo — sin ella el softphone se quedaría sin
+            // ningún servidor ICE y fallaría en cualquier red con NAT.
+            iceServers: settings.ice_servers?.length
+              ? settings.ice_servers
+              : [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }],
           },
         },
         delegate: {
