@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Button, Card, CardBody, CardHeader, ErrorBanner, Note, PageHeader, Toggle } from "@/components/ui";
-import { useSoftphone } from "@/lib/softphone-context";
+import { useSoftphone, resolverServidorSip } from "@/lib/softphone-context";
 
 const DIALPAD: { digit: string; letters?: string }[] = [
   { digit: "1" },
@@ -153,7 +153,11 @@ export default function SoftphonePage() {
             {dndError && <ErrorBanner message={dndError} onClose={() => setDndError("")} />}
 
             <Note tone="muted">
-              WebSocket: <span className="font-mono">{entorno?.sip_ws_url || "…"}</span> · Dominio:{" "}
+              {/* La URL EFECTIVA, no la de Ajustes: cuando el panel corre en un
+                  dominio, el softphone deduce wss://<dominio>/sip e ignora el
+                  "wss://localhost:7443" que viene de fábrica. Mostrar el valor
+                  crudo hacía creer que seguía intentando contra localhost. */}
+              WebSocket: <span className="font-mono">{resolverServidorSip(entorno?.sip_ws_url) || "…"}</span> · Dominio:{" "}
               <span className="font-mono">{entorno?.fs_domain || "…"}</span>
             </Note>
             {connState === "registered" ? (

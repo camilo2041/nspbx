@@ -94,8 +94,16 @@ services:
     healthcheck:
       # No usa 127.0.0.1: event_socket.conf.xml ata el ESL a la IP real del
       # contenedor ($${local_ip_v4}), no a loopback (ver ese archivo para
-      # el motivo). "hostname -i" la resuelve igual que FreeSWITCH.
-      test: ["CMD-SHELL", "fs_cli -H $$(hostname -i) -P 8021 -p \"$$FS_ESL_PASSWORD\" -x status | grep -q 'is ready'"]
+      # el motivo).
+      #
+      # Se prueban TODAS las IPs y no "hostname -i" a secas: al sumar el
+      # contenedor a traefik-public quedó en dos redes y ese comando pasó
+      # a devolver las dos direcciones separadas por espacio, con lo que
+      # fs_cli recibía un -H malformado y el contenedor quedaba unhealthy
+      # con FreeSWITCH funcionando perfecto. Tomar la primera tampoco
+      # sirve: local_ip_v4 puede ser cualquiera de las dos (acá es la
+      # segunda). El bucle corta en la que conteste.
+      test: ["CMD-SHELL", "for ip in $$(hostname -i); do fs_cli -H $$ip -P 8021 -p \"$$FS_ESL_PASSWORD\" -x status 2>/dev/null | grep -q 'is ready' && exit 0; done; exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3

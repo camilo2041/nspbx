@@ -75,7 +75,7 @@ const Ctx = createContext<SoftphoneCtx | null>(null);
  * error que no sugiere en absoluto que el problema sea un ajuste sin
  * actualizar.
  */
-function resolverServidorSip(configurado: string | null | undefined): string {
+export function resolverServidorSip(configurado: string | null | undefined): string {
   const v = (configurado ?? "").trim();
   const esLocal = v === "" || /^wss?:\/\/(localhost|127\.0\.0\.1)/i.test(v);
   if (esLocal && typeof window !== "undefined" && window.location.protocol === "https:") {
