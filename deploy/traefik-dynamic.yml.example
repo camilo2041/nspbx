@@ -70,7 +70,7 @@ http:
         certResolver: mi-resuelves-ssl
 
   middlewares:
-    # mod_sofia escucha en ":5066" sin path fijo, así que se le quita el
+    # mod_sofia escucha en el 7443 sin path fijo, así que se le quita el
     # /sip antes de reenviar y la conexión le llega en la raíz.
     nspbx-sip-strip:
       stripPrefix:
