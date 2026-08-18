@@ -396,11 +396,15 @@ export default function SettingsPage() {
               label="URL del softphone (SIP sobre WebSocket)"
               value={form.sip_ws_url}
               onChange={(v) => set("sip_ws_url", v)}
-              placeholder="wss://localhost:7443"
-              hint="La usa el navegador para registrar el softphone. Debe ser alcanzable desde el equipo del usuario, no desde dentro de Docker."
+              placeholder="wss://tu-dominio.com/sip"
+              hint="La usa el navegador para registrar el softphone; tiene que ser alcanzable desde el equipo del usuario, no desde dentro de Docker. Si el panel se sirve por HTTPS y este campo queda vacío o en localhost, se usa automáticamente wss://<dominio-del-panel>/sip, que es la ruta que el proxy dirige a FreeSWITCH."
               mono
             />
-            {form.sip_ws_url.startsWith("wss://") && (
+            {/* La advertencia del certificado autofirmado aplica SOLO al
+                acceso directo por IP:7443. Detrás de un dominio con
+                proxy, el softphone entra por /sip y reusa el certificado
+                válido del panel, así que no hay nada que aceptar. */}
+            {form.sip_ws_url.startsWith("wss://") && !form.sip_ws_url.includes("/sip") && (
               <Note tone="warn">
                 <strong>wss://</strong> cifra la señalización SIP, pero el certificado es autofirmado (no hay un
                 dominio público detrás). La primera vez, cada navegador tiene que confiar en él a mano: entrá a{" "}

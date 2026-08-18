@@ -60,6 +60,30 @@ interface SoftphoneCtx {
 
 const Ctx = createContext<SoftphoneCtx | null>(null);
 
+/**
+ * Dirección del WebSocket SIP al que se conecta el softphone.
+ *
+ * El valor de Ajustes manda, pero si quedó vacío o apuntando a
+ * localhost —que es como viene de fábrica— y el panel se está sirviendo
+ * por HTTPS, se deduce del propio dominio: el proxy rutea /sip hacia
+ * FreeSWITCH (ver deploy/traefik-dynamic.yml.example).
+ *
+ * Existe porque el valor de fábrica es "wss://localhost:7443", que solo
+ * sirve si el navegador corre en el mismo equipo que FreeSWITCH. Al
+ * publicar el panel en un dominio, el softphone seguía intentando
+ * contra localhost y fallaba con "WebSocket closed (code: 1006)", un
+ * error que no sugiere en absoluto que el problema sea un ajuste sin
+ * actualizar.
+ */
+function resolverServidorSip(configurado: string | null | undefined): string {
+  const v = (configurado ?? "").trim();
+  const esLocal = v === "" || /^wss?:\/\/(localhost|127\.0\.0\.1)/i.test(v);
+  if (esLocal && typeof window !== "undefined" && window.location.protocol === "https:") {
+    return `wss://${window.location.host}/sip`;
+  }
+  return v;
+}
+
 export function useSoftphone() {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useSoftphone debe usarse dentro de <SoftphoneProvider>");
@@ -323,7 +347,7 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
 
       const options: UserAgentOptions = {
         uri,
-        transportOptions: { server: settings.sip_ws_url ?? "" },
+        transportOptions: { server: resolverServidorSip(settings.sip_ws_url) },
         authorizationUsername: ext.number,
         authorizationPassword: ext.password,
         displayName: ext.caller_id_name || ext.number,
