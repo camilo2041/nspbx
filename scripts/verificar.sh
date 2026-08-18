@@ -67,6 +67,29 @@ else
   ok "vars.xml anuncia la IP correcta ($IP_CFG)"
 fi
 
+# No alcanza con external_sip_ip. La señalización y el audio se anuncian
+# con variables DISTINTAS, y una puede quedar bien mientras la otra no:
+# tras la migración, external_sip_ip y external_rtp_ip tenían la IP
+# pública nueva y webrtc_ext_ip seguía con la IP LAN del servidor viejo.
+# Resultado: la troncal registraba, las llamadas entraban, el softphone
+# se registraba — y el audio del navegador se iba a una dirección
+# inalcanzable. Este chequeo decía "Todo en orden" mientras pasaba.
+for VAR in external_rtp_ip webrtc_ext_ip; do
+  V=$(grep -oE "<X-PRE-PROCESS[^>]*${VAR}=[^\"]+" freeswitch/conf/vars.xml 2>/dev/null | sed "s/.*${VAR}=//")
+  if [ -z "$V" ]; then
+    falla "no se pudo leer $VAR de vars.xml"
+  elif [ "$V" = "REEMPLAZAR_POR_IP_PUBLICA" ]; then
+    falla "$VAR sin configurar — corré: bash scripts/setup.sh"
+  elif [ -n "$IP_REAL" ] && [ "$V" != "$IP_REAL" ]; then
+    # La excepción legítima: un softphone usado SOLO dentro de la LAN
+    # anda mejor con la IP LAN, porque anunciar la pública obliga al
+    # router a hacer hairpin NAT. Si ese es tu caso, ignorá este aviso.
+    falla "$VAR es $V pero la IP real es $IP_REAL (sin audio fuera de la LAN)"
+  else
+    ok "$VAR correcto ($V)"
+  fi
+done
+
   # El puerto de señalización tiene que coincidir entre vars.xml y el
   # compose. Si no, FreeSWITCH manda desde un puerto que Docker no
   # publica y las llamadas ENTRANTES no llegan (el registro saliente sí
