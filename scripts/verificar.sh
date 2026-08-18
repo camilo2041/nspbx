@@ -27,6 +27,18 @@ for c in nspbx_postgres nspbx_backend nspbx_voicebot nspbx_freeswitch nspbx_fron
   esac
 done
 
+# coturn solo si está pedido: es opcional y arranca con --profile turn.
+# Se comprueba acá y no en la lista de arriba porque su ausencia es lo
+# normal — el relay hace falta únicamente cuando la red del usuario
+# bloquea el UDP del audio.
+if [ -n "$(grep '^TURN_SECRET=' .env 2>/dev/null | cut -d= -f2-)" ]; then
+  case "$(docker inspect nspbx_coturn --format '{{.State.Health.Status}}' 2>/dev/null || echo ausente)" in
+    healthy) ok "nspbx_coturn (relay de audio)" ;;
+    ausente) falla "hay TURN_SECRET en .env pero coturn no está corriendo — docker compose --profile turn up -d" ;;
+    *)       falla "nspbx_coturn no está sano" ;;
+  esac
+fi
+
 titulo "2. Secretos sincronizados"
 # La causa nº1 de fallas silenciosas: el mismo valor tiene que estar
 # repetido idéntico en varios archivos. Si no coincide, el sistema
@@ -34,8 +46,8 @@ titulo "2. Secretos sincronizados"
 ESL_ENV=$(grep '^FS_ESL_PASSWORD=' .env 2>/dev/null | cut -d= -f2-)
 ESL_XML=$(grep -oE 'name="password" value="[^"]+"' "$AUTOLOAD/event_socket.conf.xml" 2>/dev/null | sed 's/.*value="//;s/"//')
 XML_ENV=$(grep '^FS_XML_SECRET=' .env 2>/dev/null | cut -d= -f2-)
-XML_CURL=$(grep -oE 'secret=[A-Za-z0-9]+' "$AUTOLOAD/xml_curl.conf.xml" 2>/dev/null | head -1 | cut -d= -f2)
-XML_CDR=$(grep -oE '/fs/cdr/[A-Za-z0-9]+' "$AUTOLOAD/json_cdr.conf.xml" 2>/dev/null | cut -d/ -f4)
+XML_CURL=$(grep -oE 'secret=[^"]+' "$AUTOLOAD/xml_curl.conf.xml" 2>/dev/null | head -1 | cut -d= -f2-)
+XML_CDR=$(grep -oE '/fs/cdr/[^"]+' "$AUTOLOAD/json_cdr.conf.xml" 2>/dev/null | head -1 | cut -d/ -f4)
 
 [ -n "$ESL_ENV" ] && [ "$ESL_ENV" = "$ESL_XML" ] \
   && ok "clave ESL: .env == event_socket.conf.xml" \

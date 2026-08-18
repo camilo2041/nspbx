@@ -298,6 +298,12 @@ services:
     image: coturn/coturn:4.6-alpine
     container_name: nspbx_coturn
     restart: unless-stopped
+    # No arranca con un `docker compose up` normal: hay que pedirlo con
+    # `docker compose --profile turn up -d`. Sin esto quedaba levantado
+    # aunque TURN_SECRET estuviera vacío — un contenedor consumiendo
+    # recursos sin hacer nada, y peor, dando la impresión de que el
+    # relay está activo cuando no lo está.
+    profiles: ["turn"]
     # NO publica ningún puerto, a propósito. El navegador entra por el
     # 443 de Traefik (que ya está abierto) y Traefik le habla a este
     # contenedor por la red de Docker; el audio relayado sale hacia

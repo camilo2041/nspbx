@@ -31,8 +31,8 @@ if [ -f .env ]; then
   E_ENV=$(grep '^FS_ESL_PASSWORD=' .env | cut -d= -f2-)
   E_XML=$(grep -oE 'name="password" value="[^"]+"' "$AUTOLOAD/event_socket.conf.xml" 2>/dev/null | sed 's/.*value="//;s/"//')
   X_ENV=$(grep '^FS_XML_SECRET=' .env | cut -d= -f2-)
-  X_CURL=$(grep -oE 'secret=[A-Za-z0-9]+' "$AUTOLOAD/xml_curl.conf.xml" 2>/dev/null | head -1 | cut -d= -f2)
-  X_CDR=$(grep -oE '/fs/cdr/[A-Za-z0-9]+' "$AUTOLOAD/json_cdr.conf.xml" 2>/dev/null | cut -d/ -f4)
+  X_CURL=$(grep -oE 'secret=[^"]+' "$AUTOLOAD/xml_curl.conf.xml" 2>/dev/null | head -1 | cut -d= -f2-)
+  X_CDR=$(grep -oE '/fs/cdr/[^"]+' "$AUTOLOAD/json_cdr.conf.xml" 2>/dev/null | head -1 | cut -d/ -f4)
 
   if [ "$E_ENV" = "$E_XML" ] && [ "$X_ENV" = "$X_CURL" ] && [ "$X_ENV" = "$X_CDR" ]; then
     echo "Los secretos del .env y los de FreeSWITCH coinciden. Nada que hacer."
@@ -45,8 +45,13 @@ if [ -f .env ]; then
   [[ "$R" =~ ^[sS]$ ]] || { echo "Sin cambios."; exit 1; }
 
   sed -i -E "s|(name=\"password\" value=\")[^\"]*(\")|\1${E_ENV}\2|" "$AUTOLOAD/event_socket.conf.xml"
-  sed -i -E "s|(secret=)[A-Za-z0-9]+|\1${X_ENV}|g"                   "$AUTOLOAD/xml_curl.conf.xml"
-  sed -i -E "s|(/fs/cdr/)[A-Za-z0-9]+|\1${X_ENV}|"                   "$AUTOLOAD/json_cdr.conf.xml"
+  # [^"]+ y no [A-Za-z0-9]+: el patrón tiene que abarcar el secreto
+  # VIEJO entero. Con la clase restringida, un secreto que traiga un '_'
+  # o un '-' se reemplazaba solo hasta ese carácter y el resto quedaba
+  # pegado al valor nuevo — un archivo corrupto, y encima el chequeo de
+  # coincidencia leía ese mismo pedazo y lo daba por bueno.
+  sed -i -E "s|(secret=)[^\"]+|\1${X_ENV}|g"                         "$AUTOLOAD/xml_curl.conf.xml"
+  sed -i -E "s|(/fs/cdr/)[^\"]+|\1${X_ENV}|"                         "$AUTOLOAD/json_cdr.conf.xml"
   echo "Listo. Reiniciá FreeSWITCH:  docker compose restart freeswitch"
   exit 0
 fi
