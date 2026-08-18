@@ -21,8 +21,33 @@ cd "$(dirname "$0")/.."
 AUTOLOAD="freeswitch/conf/autoload_configs"
 
 if [ -f .env ]; then
-  echo "Ya existe .env — no se toca."
-  echo "Si querés regenerar todo desde cero: mové .env a un lado y volvé a correr esto."
+  echo "Ya existe .env — no se regenera."
+  # Pero sí se revisa que los XML coincidan con él. La versión anterior
+  # salía acá directo, y eso permitía el peor de los casos: alguien
+  # rehace el .env (con secretos nuevos), los XML se quedan con los
+  # viejos, y el sistema arranca igual para fallar después —FreeSWITCH
+  # sin ESL, sin dialplan y sin historial— con errores que no dicen
+  # nada del motivo real. Pasó en una instalación real.
+  E_ENV=$(grep '^FS_ESL_PASSWORD=' .env | cut -d= -f2-)
+  E_XML=$(grep -oE 'name="password" value="[^"]+"' "$AUTOLOAD/event_socket.conf.xml" 2>/dev/null | sed 's/.*value="//;s/"//')
+  X_ENV=$(grep '^FS_XML_SECRET=' .env | cut -d= -f2-)
+  X_CURL=$(grep -oE 'secret=[A-Za-z0-9]+' "$AUTOLOAD/xml_curl.conf.xml" 2>/dev/null | head -1 | cut -d= -f2)
+  X_CDR=$(grep -oE '/fs/cdr/[A-Za-z0-9]+' "$AUTOLOAD/json_cdr.conf.xml" 2>/dev/null | cut -d/ -f4)
+
+  if [ "$E_ENV" = "$E_XML" ] && [ "$X_ENV" = "$X_CURL" ] && [ "$X_ENV" = "$X_CDR" ]; then
+    echo "Los secretos del .env y los de FreeSWITCH coinciden. Nada que hacer."
+    exit 0
+  fi
+
+  echo
+  echo "ATENCIÓN: los secretos NO coinciden entre .env y los XML de FreeSWITCH."
+  read -rp "¿Reescribo los XML tomando el .env como fuente de verdad? [s/N]: " R
+  [[ "$R" =~ ^[sS]$ ]] || { echo "Sin cambios."; exit 1; }
+
+  sed -i -E "s|(name=\"password\" value=\")[^\"]*(\")|\1${E_ENV}\2|" "$AUTOLOAD/event_socket.conf.xml"
+  sed -i -E "s|(secret=)[A-Za-z0-9]+|\1${X_ENV}|g"                   "$AUTOLOAD/xml_curl.conf.xml"
+  sed -i -E "s|(/fs/cdr/)[A-Za-z0-9]+|\1${X_ENV}|"                   "$AUTOLOAD/json_cdr.conf.xml"
+  echo "Listo. Reiniciá FreeSWITCH:  docker compose restart freeswitch"
   exit 0
 fi
 
