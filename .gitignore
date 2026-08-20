@@ -37,6 +37,11 @@ backups/
 # Audios generados por el voizbot durante cada llamada.
 freeswitch/sounds/ai_sessions/
 freeswitch/sounds/tts_cache/
+# Biblioteca oficial de FreeSWITCH: ~44 MB de audio que nunca cambia y
+# se baja con scripts/sonidos.sh. En git haría pesado cada clone para
+# siempre, y no es código nuestro.
+freeswitch/sounds/music/
+freeswitch/sounds/en/
 # Base y logs internos de FreeSWITCH.
 freeswitch/db/
 freeswitch/log/

@@ -164,3 +164,8 @@ echo "servidor con nube GRIS en Cloudflare, y que estén abiertos los"
 echo "puertos 80, 443, 5060 (TCP+UDP) y 16384-16584/UDP."
 echo
 echo "Después:  docker compose up -d --build"
+echo
+echo "Y si vas a usar música en espera, buzón de voz o menús IVR con"
+echo "frases estándar, bajá la biblioteca de sonidos de FreeSWITCH:"
+echo "  bash scripts/sonidos.sh"
+echo "(no viene en el repositorio: son ~44 MB de audio que no cambia)"
