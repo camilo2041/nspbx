@@ -228,3 +228,44 @@ DEFECTO = "general"
 
 def obtener(key: str | None) -> Intencion:
     return INTENCIONES.get((key or "").strip().lower(), INTENCIONES[DEFECTO])
+
+
+# Saludo de cada plantilla. Vacío en confirmar/reagendar/cancelar A
+# PROPÓSITO: esas tres siempre requieren cita (requiere_cita=True), así
+# que dejar el saludo del nodo sin completar hace que ai_agent.py arme uno
+# automático que primero pregunta "¿hablo con {nombre}?" — nunca hay que
+# revelar que existe una cita agendada antes de confirmar con quién se
+# está hablando (ver el bloque de verificación de identidad en
+# handle_call). Es solo el punto de partida que se precarga en el editor;
+# el usuario lo edita si quiere un saludo fijo en su lugar.
+_SALUDO_PLANTILLA: dict[str, str] = {
+    "confirmar": "",
+    "reagendar": "",
+    "cancelar": "",
+    "agendar": INTENCIONES["agendar"].saludo(None),
+    "general": INTENCIONES["general"].saludo(None),
+}
+
+
+def plantilla(key: str | None) -> dict:
+    """Una plantilla como dict {key, label, prompt, tools, max_turns,
+    greeting} — el punto de partida editable de un nodo Agente IA nuevo.
+    No es algo que el motor de la llamada siga leyendo en vivo: eso ahora
+    lo hace directamente el nodo (ver app/services/ai_agent.py). También
+    la usa flow_engine._migrar_nodos_ai_legacy para convertir los nodos
+    con la selección fija vieja."""
+    i = obtener(key)
+    return {
+        "key": i.key,
+        "label": i.label,
+        "prompt": i.objetivo,
+        "tools": list(i.tools),
+        "max_turns": i.max_turns,
+        "greeting": _SALUDO_PLANTILLA[i.key],
+        "requiere_cita": i.requiere_cita,
+    }
+
+
+def plantillas() -> list[dict]:
+    """Catálogo completo, para GET /api/voicebots/ai-templates."""
+    return [plantilla(k) for k in INTENCIONES]

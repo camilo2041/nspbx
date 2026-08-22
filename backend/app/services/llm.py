@@ -83,16 +83,47 @@ TOOLS = [
 ]
 
 
-def tools_para(nombres: tuple[str, ...] | None) -> list[dict]:
-    """Subconjunto de herramientas para una gestión concreta.
+def _tool_avanzar_flujo(exits: list[dict]) -> dict:
+    """Tool dinámica: el enum de `razon` sale de las salidas que el propio
+    nodo tiene configuradas en el editor de flujo (data.exits). El modelo
+    elige UNA para saltar a otro nodo — ai_agent.py resuelve esa clave
+    contra los edges que salen del nodo para decidir el destino."""
+    return {
+        "type": "function",
+        "function": {
+            "name": "avanzar_flujo",
+            "description": (
+                "Termina lo que te tocaba resolver en este punto de la llamada y continúa "
+                "en otro punto del flujo, según cuál de las razones describe mejor cómo terminó."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "razon": {
+                        "type": "string",
+                        "enum": [e["key"] for e in exits],
+                        "description": " / ".join(f"{e['key']}: {e.get('label', '')}" for e in exits),
+                    }
+                },
+                "required": ["razon"],
+            },
+        },
+    }
 
-    Exponerle al modelo solo lo que esa llamada necesita es una barrera
-    real: si la persona marcó "reagendar", `agendar_cita` ni siquiera
-    existe para el modelo, así que no puede crearle una cita nueva por
-    equivocación en vez de mover la que ya tiene."""
-    if not nombres:
-        return TOOLS
-    return [t for t in TOOLS if t["function"]["name"] in nombres]
+
+def tools_para(nombres: tuple[str, ...] | None, exits: list[dict] | None = None) -> list[dict]:
+    """Subconjunto de herramientas para un nodo Agente IA concreto.
+
+    Exponerle al modelo solo lo que ese nodo habilitó es una barrera real:
+    si el nodo no marcó "agendar_cita", el modelo ni siquiera la ve, así
+    que no puede crear una cita nueva por equivocación en vez de mover la
+    que ya tiene. Si el nodo tiene salidas configuradas (`exits`), se le
+    suma además `avanzar_flujo` — si no tiene ninguna, esa tool no existe
+    para el modelo."""
+    base = TOOLS if not nombres else [t for t in TOOLS if t["function"]["name"] in nombres]
+    if exits:
+        base = [*base, _tool_avanzar_flujo(exits)]
+    return base
 
 
 async def chat(

@@ -21,11 +21,11 @@ from urllib.parse import unquote
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy.exc import IntegrityError
 
-from app.core.clock import calendario, fecha_en_palabras, hora_en_palabras, now_local
+from app.core.clock import fecha_en_palabras, hora_en_palabras, now_local
 from app.core.config import settings
 from app.core.database import async_session
 from app.models import Appointment, SystemSettings
-from app.services import ai_intents, ambience, deepgram, llm, tts, tts_elevenlabs
+from app.services import ai_node, ambience, deepgram, llm, tts, tts_elevenlabs
 from app.services.usage import UsageMeter
 from app.services.appointments import (
     available_slots,
@@ -54,30 +54,6 @@ VAD_SILENCE_SECS = 0.7
 # tts_elevenlabs.DEFAULT_VOICES[0] (Rachel) — es una voz de librería
 # compartida bloqueada por API en plan free (402 payment_required).
 VOICE_ID = "Xb7hH8MSUJpSbSDYk0k2"
-
-def _prompt_con_fecha(intencion: ai_intents.Intencion) -> str:
-    """Prompt de la gestión + un calendario ya resuelto.
-
-    El tono y las reglas comunes salen de `ai_intents.BASE`; lo que cambia
-    por gestión es el bloque `objetivo`. Así confirmar, reagendar y
-    cancelar son guiones distintos y no un único agente genérico que tiene
-    que adivinar a qué lo llamaron.
-
-    El calendario va aparte porque el modelo calcula mal las fechas: en
-    una llamada real dio el 18 (martes) cuando le pidieron "el viernes de
-    la próxima semana". Con la tabla, calcular pasa a ser buscar."""
-    return (
-        f"{ai_intents.BASE}\n\n{intencion.objetivo}\n\n"
-        f"CALENDARIO (úsalo SIEMPRE, nunca calcules fechas de memoria):\n"
-        f"{calendario(15)}\n\n"
-        "Para interpretar 'mañana', 'el viernes', 'la otra semana', 'en quince días', "
-        "busca el día en esa tabla y copia la fecha ISO que le corresponde. Si la "
-        "persona pide un día que no aparece, pídele que lo precise en vez de "
-        "adivinarlo. Antes de confirmar, di siempre el día de la semana junto a la "
-        "fecha ('el viernes 21') para que pueda corregirte si no coincide.\n"
-        "Al llamar herramientas, las fechas SIEMPRE en formato YYYY-MM-DD y las horas en HH:MM (24h)."
-    )
-
 
 def _local_sessions_dir() -> Path:
     path = Path(settings.fs_sounds_dir) / AI_SESSIONS_DIR
@@ -213,11 +189,17 @@ async def _llm_turn(
     meter: UsageMeter,
     tools: list[dict] | None = None,
     appointment_id_fijo: int | None = None,
-) -> tuple[str, bool]:
+    exits: dict[str, str] | None = None,
+) -> tuple[str, bool, str | None]:
     """Le pasa la conversación al modelo de lenguaje configurado en
     Ajustes, ejecuta las tool calls que pida (contra la agenda real), y
-    devuelve (texto_para_decir, terminar_llamada)."""
+    devuelve (texto_para_decir, terminar_turno, nodo_siguiente).
+
+    `terminar_turno` corta el loop de turnos de ESTE nodo — por
+    `terminar_llamada` (cuelga) o por `avanzar_flujo` (salta a
+    `nodo_siguiente` en vez de colgar, ver ai_agent.handle_call)."""
     should_end = False
+    next_node_id: str | None = None
     reply_text = ""
     hubo_accion = False
     ya_se_reclamo = False
@@ -285,8 +267,11 @@ async def _llm_turn(
 
         async with async_session() as session:
             for call_id, name, args in calls:
-                ok, result, info = await _run_tool(session, name, args, caller_phone, appointment_id_fijo)
+                ok, result, info = await _run_tool(session, name, args, caller_phone, appointment_id_fijo, exits)
                 if name == "terminar_llamada":
+                    should_end = True
+                if name == "avanzar_flujo" and ok and info:
+                    next_node_id = info.get("avanzar_a")
                     should_end = True
                 if name == "consultar_disponibilidad":
                     hubo_consulta = True
@@ -339,7 +324,7 @@ async def _llm_turn(
             else "Perdóname, se me enredó un momento. ¿Me repites lo último, por favor?"
         )
 
-    return reply_text, should_end
+    return reply_text, should_end, next_node_id
 
 
 async def _buscar_cita(session, caller_phone: str, appointment_id: int | None):
@@ -365,7 +350,12 @@ def _info_accion(accion: str, appt) -> dict:
 
 
 async def _run_tool(
-    session, name: str, args: dict, caller_phone: str, appointment_id: int | None = None
+    session,
+    name: str,
+    args: dict,
+    caller_phone: str,
+    appointment_id: int | None = None,
+    exits: dict[str, str] | None = None,
 ) -> tuple[bool, str, dict | None]:
     """Devuelve (funcionó, mensaje para el modelo, info de la acción o
     None). `info` es lo que necesita el registro de gestión (ver
@@ -460,6 +450,18 @@ async def _run_tool(
 
         if name == "terminar_llamada":
             return True, "Llamada finalizada.", None
+
+        if name == "avanzar_flujo":
+            # El enum de `razon` ya viene acotado por llm.tools_para a las
+            # salidas configuradas de ESTE nodo (ver ai_node.py), así que
+            # un `target` ausente acá sería el modelo inventando una razón
+            # fuera del enum — no debería pasar, pero no hay de dónde
+            # saltar si pasa.
+            razon = str(args.get("razon", "")).strip()
+            target = (exits or {}).get(razon)
+            if not target:
+                return False, "Esa salida no existe en este punto del flujo.", None
+            return True, "Avanzando al siguiente punto del flujo.", {"avanzar_a": target}
     except Exception as exc:
         logger.exception("Error ejecutando tool %s", name)
         return False, f"Ocurrió un error interno: {exc}", None
@@ -523,6 +525,27 @@ class CallBridge:
 active_bridges: dict[str, CallBridge] = {}
 
 router = APIRouter()
+
+
+async def _saltar_a_nodo(session: ESLOutboundSession, bot_id: str, node_id: str) -> None:
+    """`avanzar_flujo` decidió seguir la llamada en otro nodo del mismo
+    flujo, en vez de colgar. Para el audio-fork de este tramo (si no,
+    quedaría corriendo dos veces sobre el mismo canal) y transfiere el
+    canal al contexto de dialplan de ese nodo — mismo `uuid`, la llamada
+    sigue viva. Si el nodo destino también es un Agente IA, su contexto
+    (ver flow_engine._build_ai_agent_context) vuelve a hacer `socket`, así
+    que FreeSWITCH abre una sesión ESL outbound NUEVA e independiente para
+    él: handle_call se invoca de nuevo para el mismo call_id, con su
+    propio prompt/mensajes desde cero. Mecanismo nuevo, sin probar todavía
+    contra una llamada real — confirmarlo antes de confiar en él para
+    tráfico de producción."""
+    uid = session.channel_vars.get("unique-id", "")
+    try:
+        await session.api(f"uuid_audio_fork {uid} stop voizbot")
+    except Exception:
+        pass
+    context_name = f"bot_{bot_id}_n{node_id}"
+    await session.execute("transfer", f"{context_name} XML {context_name}")
 
 
 @router.websocket("/ws/voicebot/{call_id}")
@@ -661,6 +684,20 @@ async def _play_sentence(session: ESLOutboundSession, path: str, bridge: CallBri
 _MAX_PRIMER_TROZO = 60
 
 
+def _con_variables(texto: str, cita) -> str:
+    """Reemplaza {cliente}/{fecha} en el saludo de un nodo Agente IA por
+    los datos reales de la cita agendada (ver editor de flujo, panel del
+    nodo). Antes esto solo existía en el mensaje de apertura de la
+    campaña, con datos aparte que había que cargar por CSV (ver
+    dialer.py); ahora sale directo de la cita ya sincronizada en la
+    Agenda, así que funciona igual venga la llamada de una campaña o de
+    cualquier otro lado."""
+    if not cita:
+        return texto
+    cuando = f"{fecha_en_palabras(cita.appointment_date.date())} a las {hora_en_palabras(cita.appointment_date)}"
+    return texto.replace("{cliente}", cita.patient_name).replace("{fecha}", cuando)
+
+
 def _trocear(reply_text: str) -> list[str]:
     """Parte la respuesta en frases, y si la primera es larga la corta
     además por coma para que el bot arranque antes.
@@ -770,6 +807,27 @@ async def handle_call(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         except ValueError:
             pass
 
+    # Qué nodo del flujo visual (ver app/services/flow_engine.py) entrega
+    # esta llamada al voizbot — lo fija el dialplan justo antes del
+    # `socket`. Sin esto no hay forma de saber qué prompt/herramientas le
+    # tocan a esta llamada (ver app/services/ai_node.py).
+    bot_id_raw = session.channel_vars.get("variable_nspbx_bot_id")
+    node_id = session.channel_vars.get("variable_nspbx_node_id")
+    if not bot_id_raw or not node_id:
+        logger.error("Voizbot IA: llamada %s sin nspbx_bot_id/nspbx_node_id (dialplan desactualizado)", call_id)
+        await session.execute("hangup", "NORMAL_CLEARING")
+        return
+
+    async with async_session() as db:
+        nodo = await ai_node.cargar(db, int(bot_id_raw), node_id)
+    if nodo is None:
+        logger.error(
+            "Voizbot IA: llamada %s referencia un nodo Agente IA inexistente (bot %s, nodo %s)",
+            call_id, bot_id_raw, node_id,
+        )
+        await session.execute("hangup", "NORMAL_CLEARING")
+        return
+
     async with async_session() as db:
         row = await db.get(SystemSettings, 1)
         eleven_key = (row.elevenlabs_api_key if row else None) or ""
@@ -781,6 +839,21 @@ async def handle_call(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         voz_proveedor = (row.ai_voice_provider if row else None) or "elevenlabs"
         stt_proveedor = (getattr(row, "ai_stt_provider", None) if row else None) or "elevenlabs"
         voz_id = (row.ai_voice_id if row else None) or VOICE_ID
+        limite_ia = (getattr(row, "max_concurrent_ai_calls", None) if row else None) or 20
+
+    # Sin este tope, un pico de llamadas de IA a la vez (una campaña
+    # grande, por ejemplo) puede agotar la memoria/CPU del único proceso
+    # que las atiende a todas — y si eso pasa, se caen TODAS las
+    # conversaciones de IA en curso a la vez, no solo la más nueva. Mejor
+    # rechazar limpio la que sobra que arriesgar eso (ver auditoría de
+    # llamadas — capacidad para 100 asesores).
+    if len(active_bridges) >= limite_ia:
+        logger.warning(
+            "Voizbot IA: límite de %s conversaciones simultáneas alcanzado, se rechaza la llamada %s",
+            limite_ia, call_id,
+        )
+        await session.execute("hangup", "NORMAL_CLEARING")
+        return
 
     # Cada pieza necesita su propia key, y solo la del proveedor elegido.
     falta = []
@@ -818,17 +891,13 @@ async def handle_call(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         local.write_bytes(audio)
         return f"{FS_SIDE_SOUNDS_DIR}/{AI_SESSIONS_DIR}/{local.name}"
 
-    # Qué gestión viene a resolver esta llamada. La fija el dialplan al
-    # entregar el control (ver flow_engine), según la tecla que marcó la
-    # persona en el menú. Sin esto el bot preguntaba "¿en qué te puedo
-    # ayudar?" a alguien que acababa de marcar exactamente eso.
-    intencion = ai_intents.obtener(session.channel_vars.get("variable_nspbx_ai_intent"))
-    tools_intencion = llm.tools_para(intencion.tools)
-    logger.info("Voizbot IA: llamada %s con la gestión '%s'", call_id, intencion.key)
+    tools_nodo = llm.tools_para(nodo.tools, exits=nodo.exit_options)
+    logger.info("Voizbot IA: llamada %s en el nodo '%s' (%s) del bot %s", call_id, nodo.label, node_id, bot_id_raw)
 
-    messages = [{"role": "system", "content": _prompt_con_fecha(intencion)}]
+    messages = [{"role": "system", "content": nodo.prompt}]
     sessions_dir = _local_sessions_dir()
     consumer_task: asyncio.Task | None = None
+    bridge: CallBridge | None = None
     meter = UsageMeter(call_id, caller_phone, voz_proveedor, stt_proveedor)
 
     try:
@@ -861,22 +930,49 @@ async def handle_call(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 if cita is None:
                     cita = await find_next_appointment(db, caller_phone)
 
+            # El saludo del nodo (si lo escribieron en el editor) es texto
+            # fijo, sin la cita interpolada — el saludo que SÍ verifica
+            # identidad ("¿hablo con {nombre}?") solo se arma automático
+            # cuando no hay uno propio ni de campaña, y en ese caso el
+            # modelo recibe además las instrucciones de qué hacer con la
+            # respuesta (ver más abajo).
+            greeting_generado = not saludo_campana and not nodo.greeting
             if cita:
                 cuando = f"{fecha_en_palabras(cita.appointment_date.date())} a las {hora_en_palabras(cita.appointment_date)}"
+                if greeting_generado:
+                    # El saludo automático (ver más abajo) ya le preguntó
+                    # "¿hablo con {nombre}?" — antes de revelar cualquier
+                    # detalle de la cita hay que esperar esa confirmación.
+                    # Importa sobre todo en SALIENTE (campaña): puede
+                    # contestar cualquiera (un familiar, un número
+                    # reasignado), y contarle a quien no corresponde que
+                    # hay una cita agendada ya es filtrar un dato privado.
+                    extra = (
+                        f" Tu saludo ya le preguntó '¿hablo con {cita.patient_name}?' — esperá su respuesta "
+                        "ANTES de mencionar la cita.\n"
+                        "- Si confirma que sí (dice que sí, dice su propio nombre, responde con naturalidad "
+                        "como quien reconoce que le hablan a él/ella): recién ahí seguí con el objetivo de "
+                        "esta llamada.\n"
+                        "- Si dice que NO es esa persona (número equivocado, no la conoce, etc.): discúlpate "
+                        "brevemente, NO reveles ningún detalle de la cita (ni fecha, ni motivo, ni que existe "
+                        "una), y llamá a terminar_llamada.\n"
+                        "- Si pregunta para qué es, o no responde claro: podés decir que es del consultorio "
+                        "para confirmarle un turno, sin dar fecha ni más detalle todavía."
+                    )
+                else:
+                    extra = ""
                 messages[0]["content"] += (
                     f"\n\nLa persona que llama tiene una cita agendada para el {cuando}"
-                    f" a nombre de {cita.patient_name}. Ya se la mencionaste al saludar, "
-                    "así que no la repitas como si fuera nueva."
+                    f" a nombre de {cita.patient_name}.{extra}"
                 )
-            elif intencion.requiere_cita:
-                # La gestión no tiene sentido sin cita (confirmar, mover o
+            elif nodo.requiere_cita:
+                # Este nodo no tiene sentido sin cita (confirmar, mover o
                 # cancelar algo que no existe). Se avisa y se corta, en vez
                 # de dejar al bot improvisando.
-                logger.info("Voizbot IA: %s pidió '%s' pero no tiene cita", caller_phone, intencion.key)
+                logger.info("Voizbot IA: %s llegó al nodo '%s' pero no tiene cita", caller_phone, nodo.label)
                 await _decir_respuesta(
                     session, decir,
-                    "¡Hola! Te habla la asistente virtual del Centro Odontológico. "
-                    "No encuentro ninguna cita agendada a tu nombre. "
+                    "¡Hola! No encuentro ninguna cita agendada a tu nombre. "
                     "Comunícate con nosotros y con mucho gusto te ayudamos. ¡Hasta pronto!",
                     bridge, f"{call_id}_sincita", allow_bargein=False, thinking=thinking,
                 )
@@ -884,11 +980,27 @@ async def handle_call(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 await session.execute("hangup", "NORMAL_CLEARING")
                 return
 
-            greeting = saludo_campana or intencion.saludo(cita)
+            if saludo_campana:
+                greeting = saludo_campana
+            elif nodo.greeting:
+                # {cliente}/{fecha} salen de la cita real de la Agenda, no
+                # de un dato aparte que haya que cargar por CSV en la
+                # campaña (eso ya no existe, ver dialer.py) — si el nodo no
+                # tiene "Requiere que la persona ya tenga una cita" marcado
+                # y no se encontró ninguna, quedan sin reemplazar tal cual
+                # se escribieron.
+                greeting = _con_variables(nodo.greeting, cita)
+            elif cita:
+                # Confirma identidad ANTES de nombrar la cita — ver el
+                # bloque de arriba, que le explica al modelo qué hacer con
+                # cada posible respuesta a esta pregunta.
+                greeting = f"¡Hola! ¿Hablo con {cita.patient_name}?"
+            else:
+                greeting = "¡Hola! ¿En qué te puedo ayudar?"
             await _decir_respuesta(session, decir, greeting, bridge, f"{call_id}_greeting")
             messages.append({"role": "assistant", "content": greeting})
 
-            for turn in range(intencion.max_turns):
+            for turn in range(nodo.max_turns):
                 transcript = None
                 while transcript is None:
                     raw = await _wait_utterance(bridge, timeout=TURN_TIMEOUT_SECONDS)
@@ -907,8 +1019,9 @@ async def handle_call(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 # (modelo + herramientas + síntesis). Se rellena con el
                 # tecleo para que no sea un silencio muerto.
                 await thinking.start()
-                reply_text, should_end = await _llm_turn(
-                    llm_base_url, llm_model, llm_key, messages, caller_phone, meter, tools_intencion, appointment_id_fijo
+                reply_text, should_end, next_node_id = await _llm_turn(
+                    llm_base_url, llm_model, llm_key, messages, caller_phone, meter,
+                    tools_nodo, appointment_id_fijo, nodo.exit_targets,
                 )
 
                 if reply_text:
@@ -920,7 +1033,10 @@ async def handle_call(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 
                 if should_end:
                     meter.outcome = "completed"
-                    await session.execute("hangup", "NORMAL_CLEARING")
+                    if next_node_id:
+                        await _saltar_a_nodo(session, bot_id_raw, next_node_id)
+                    else:
+                        await session.execute("hangup", "NORMAL_CLEARING")
                     break
             else:
                 # Se acabaron los turnos sin que el modelo cerrara: la
@@ -941,7 +1057,13 @@ async def handle_call(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
         # En el finally para que quede registro pase lo que pase: también
         # cuentan (y sobre todo cuentan) las llamadas que terminaron mal.
         await meter.save()
-        active_bridges.pop(call_id, None)
+        # Con avanzar_flujo un mismo call_id puede abrir una sesión ESL
+        # nueva para el nodo siguiente ANTES de que esta termine de
+        # cerrar (ver _saltar_a_nodo) — un pop sin más borraría el bridge
+        # de ESA sesión nueva en vez del propio. Solo se saca si el bridge
+        # registrado sigue siendo el de esta sesión.
+        if active_bridges.get(call_id) is bridge:
+            active_bridges.pop(call_id, None)
         if consumer_task:
             consumer_task.cancel()
         try:

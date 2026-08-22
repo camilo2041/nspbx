@@ -75,12 +75,14 @@ export default function VoiceBotFlowPage() {
     []
   );
 
-  const addNode = (type: "menu" | "transfer" | "hangup") => {
+  const addNode = (type: "menu" | "transfer" | "hangup" | "ai_agent") => {
     const id = newId();
-    const label = type === "menu" ? "Menú de audio" : type === "transfer" ? "Transferir" : "Colgar";
+    const label =
+      type === "menu" ? "Menú de audio" : type === "transfer" ? "Transferir" : type === "ai_agent" ? "Agente IA" : "Colgar";
+    const data = type === "ai_agent" ? { label, prompt: "", tools: [], max_turns: 10, exits: [] } : { label };
     setNodes((nds) => [
       ...nds,
-      { id, type, position: { x: 300 + Math.random() * 200, y: 100 + Math.random() * 300 }, data: { label } },
+      { id, type, position: { x: 300 + Math.random() * 200, y: 100 + Math.random() * 300 }, data },
     ]);
   };
 
@@ -97,6 +99,22 @@ export default function VoiceBotFlowPage() {
     // archivo exista. Se autoguarda al generar/subir audio para que "no
     // guarda" deje de pasar.
     if (autoSave) persistFlow(updated, edges);
+  };
+
+  // "Nodo inicial" y "Entrada de campaña" son de UN SOLO nodo a la vez —
+  // el dialplan (ver flow_engine.py) se queda con el primero que
+  // encuentra marcado y no avisa si hay más de uno. Marcar uno acá
+  // desmarca automáticamente cualquier otro que lo tuviera, para que
+  // nunca quede más de un nodo con la misma bandera sin que se note.
+  const setExclusiveFlag = (field: "start" | "campaign_entry", value: boolean) => {
+    if (!selectedId) return;
+    const updated = nodes.map((n) => {
+      if (n.id === selectedId) return { ...n, data: { ...n.data, [field]: value } };
+      if (value && n.data?.[field]) return { ...n, data: { ...n.data, [field]: false } };
+      return n;
+    });
+    setNodes(updated);
+    persistFlow(updated, edges);
   };
 
   const deleteSelected = () => {
@@ -150,6 +168,9 @@ export default function VoiceBotFlowPage() {
           <Button variant="secondary" onClick={() => addNode("transfer")}>
             + Transferir
           </Button>
+          <Button variant="secondary" onClick={() => addNode("ai_agent")}>
+            + Agente IA
+          </Button>
           <Button variant="secondary" onClick={() => addNode("hangup")}>
             + Colgar
           </Button>
@@ -189,6 +210,11 @@ export default function VoiceBotFlowPage() {
             node={selectedNode}
             voices={voices}
             onChange={updateSelectedData}
+            onSetExclusiveFlag={setExclusiveFlag}
+            otherStartLabel={nodes.find((n) => n.id !== selectedId && n.data?.start)?.data?.label as string | undefined}
+            otherCampaignEntryLabel={
+              nodes.find((n) => n.id !== selectedId && n.data?.campaign_entry)?.data?.label as string | undefined
+            }
             onDelete={deleteSelected}
             onClose={() => setSelectedId(null)}
           />

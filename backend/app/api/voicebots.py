@@ -15,9 +15,9 @@ from app.schemas import (
     VoiceBotUpdate,
 )
 from app.models import SystemSettings
-from app.services import deepgram, greetings, tts, tts_elevenlabs
+from app.services import ai_intents, deepgram, greetings, tts, tts_elevenlabs
 from app.services.esl import reloadxml
-from app.services.flow_engine import legacy_flow_from_bot
+from app.services.flow_engine import legacy_flow_from_bot, parse_flow
 
 router = APIRouter(prefix="/api/voicebots", tags=["voicebots"])
 
@@ -78,6 +78,15 @@ async def create_voicebot(payload: VoiceBotCreate, session: AsyncSession = Depen
     return bot
 
 
+@router.get("/ai-templates")
+async def get_ai_templates():
+    """Plantillas para precargar un nodo Agente IA nuevo en el editor de
+    flujo (ver ai_intents.plantillas). Va ANTES de /{bot_id} a propósito:
+    ese path matchea cualquier segmento único y se quedaría con esta ruta
+    primero si estuviera declarada después."""
+    return ai_intents.plantillas()
+
+
 @router.get("/{bot_id}", response_model=VoiceBotOut)
 async def get_voicebot(bot_id: int, session: AsyncSession = Depends(get_session)):
     bot = await session.get(VoiceBot, bot_id)
@@ -116,18 +125,18 @@ async def get_flow(bot_id: int, session: AsyncSession = Depends(get_session)):
     bot = await session.get(VoiceBot, bot_id)
     if not bot:
         raise HTTPException(status_code=404, detail="Bot no encontrado")
-    if not bot.flow_json:
-        # Bot creado antes del editor visual: se reconstruye su menú simple
-        # (config JSON + saludo) como nodos, para que se vea y se pueda
-        # seguir editando en el nuevo editor en vez de aparecer vacío.
-        return legacy_flow_from_bot(bot)
-    try:
-        parsed = json.loads(bot.flow_json)
-        if isinstance(parsed, dict) and parsed.get("nodes"):
-            return parsed
-        return legacy_flow_from_bot(bot)
-    except (ValueError, TypeError):
-        return legacy_flow_from_bot(bot)
+    # parse_flow además migra en el momento los nodos IA de la selección
+    # fija vieja (transfer + extension="ai_agent") al nuevo tipo "ai_agent"
+    # con prompt propio (ver flow_engine._migrar_nodos_ai_legacy) — así el
+    # editor ya los muestra migrados sin que el bot se haya reabierto y
+    # regrabado antes.
+    parsed = parse_flow(bot.flow_json)
+    if parsed is not None:
+        return parsed
+    # Bot creado antes del editor visual: se reconstruye su menú simple
+    # (config JSON + saludo) como nodos, para que se vea y se pueda
+    # seguir editando en el nuevo editor en vez de aparecer vacío.
+    return legacy_flow_from_bot(bot)
 
 
 @router.put("/{bot_id}/flow")

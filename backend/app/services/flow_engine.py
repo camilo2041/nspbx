@@ -3,6 +3,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from app.core.config import settings
+from app.services import ai_intents
+from app.services.dialplan_recording import append_record_actions
 
 # Ruta que ve FreeSWITCH para los audios de bots.
 FS_SOUNDS_BOTS = "/usr/share/freeswitch/sounds/bots"
@@ -10,6 +12,32 @@ FS_SOUNDS_BOTS = "/usr/share/freeswitch/sounds/bots"
 SALUDO_INICIAL = Path(settings.fs_sounds_dir) / "bots" / "saludo_inicial.wav"
 
 VALID_DIGITS = set("0123456789*#")
+
+
+def _migrar_nodos_ai_legacy(nodes: list[dict]) -> list[dict]:
+    """Convierte in-place los nodos `transfer` con `extension == "ai_agent"`
+    (la selección fija de gestión de antes del editor de nodos IA, ver
+    ai_intents.py) al nuevo tipo `ai_agent` con prompt propio. Mismo `id` y
+    mismas conexiones entrantes: no hay que retocar los edges ni reabrir el
+    bot en el editor para que la llamada real ya use el nodo migrado — se
+    aplica cada vez que se lee el flujo (GET /flow y generación de
+    dialplan), no solo una vez."""
+    for node in nodes:
+        data = node.get("data") or {}
+        if node.get("type") != "transfer" or data.get("extension") != "ai_agent":
+            continue
+        t = ai_intents.plantilla(data.get("ai_intent"))
+        node["type"] = "ai_agent"
+        node["data"] = {
+            "label": data.get("label") or t["label"],
+            "prompt": t["prompt"],
+            "tools": t["tools"],
+            "max_turns": t["max_turns"],
+            "greeting": t["greeting"],
+            "requiere_cita": t["requiere_cita"],
+            "exits": [],
+        }
+    return nodes
 
 
 def parse_flow(flow_json: str | None) -> dict | None:
@@ -25,7 +53,7 @@ def parse_flow(flow_json: str | None) -> dict | None:
     edges = data.get("edges")
     if not isinstance(nodes, list) or not isinstance(edges, list) or not nodes:
         return None
-    return {"nodes": nodes, "edges": edges}
+    return {"nodes": _migrar_nodos_ai_legacy(nodes), "edges": edges}
 
 
 def legacy_flow_from_bot(bot) -> dict:
@@ -92,7 +120,9 @@ def _node_audio_action(node: dict) -> ET.Element | None:
     return None
 
 
-def build_voicebot_flow_routes(section: ET.Element, context: ET.Element, bot) -> bool:
+def build_voicebot_flow_routes(
+    section: ET.Element, context: ET.Element, bot, queues: list | None = None, record_all: bool = False
+) -> bool:
     """Genera el dialplan a partir de un flujo visual (nodos + conexiones,
     estilo n8n) guardado en bot.flow_json. Devuelve False si el bot no tiene
     un flujo válido (para que el llamador use el generador simple legado).
@@ -112,28 +142,34 @@ def build_voicebot_flow_routes(section: ET.Element, context: ET.Element, bot) ->
     if not start:
         return False
 
-    # Una llamada de CAMPAÑA (ver workers/dialer.py) llega con la gestión
-    # ya decidida ANTES de marcar — `nspbx_ai_intent` viene seteado desde
-    # el originate. A quien contesta no tiene sentido pedirle que marque
-    # una opción de menú que nunca vio: se salta el menú entero y se
-    # entrega la llamada directo al motor de IA, igual que haría un nodo
-    # de "transferencia" a ai_agent dentro del flujo (ver
-    # _append_target_actions más abajo) pero sin el paso intermedio del
-    # menú. Esta extensión va ANTES que la del menú normal a propósito:
-    # FreeSWITCH evalúa las <extension> en orden y se queda con la
-    # primera que matchea todas sus <condition>.
-    directo_ext = ET.SubElement(
-        context, "extension", attrib={"name": f"bot_{bot.id}_{bot.name}_campana", "continue": "false"}
+    # Una llamada de CAMPAÑA (ver workers/dialer.py) llega con la gestión ya
+    # decidida ANTES de marcar — `nspbx_appointment_id` viene seteado desde
+    # el originate. A quien contesta no tiene sentido pedirle que marque una
+    # opción de menú que nunca vio: si el flujo tiene un nodo Agente IA
+    # marcado como "entrada de campaña" (data.campaign_entry), se salta el
+    # menú entero y se entrega la llamada directo a ESE nodo. Esta
+    # extensión va ANTES que la del menú normal a propósito: FreeSWITCH
+    # evalúa las <extension> en orden y se queda con la primera que matchea
+    # todas sus <condition>. Si ningún nodo está marcado, se omite y la
+    # llamada de campaña entra como cualquier otra (por el nodo inicial).
+    campana_node = next(
+        (n for n in flow["nodes"] if n.get("type") == "ai_agent" and (n.get("data") or {}).get("campaign_entry")),
+        None,
     )
-    ET.SubElement(directo_ext, "condition", attrib={"field": "destination_number", "expression": f"^bot_{bot.id}$"})
-    directo_cond = ET.SubElement(
-        directo_ext, "condition", attrib={"field": "${nspbx_ai_intent}", "expression": "."}
-    )
-    ET.SubElement(directo_cond, "action", attrib={"application": "answer"})
-    ET.SubElement(
-        directo_cond, "action", attrib={"application": "socket", "data": f"{settings.voicebot_esl_socket} async full"}
-    )
-    ET.SubElement(directo_cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+    if campana_node is not None:
+        directo_ext = ET.SubElement(
+            context, "extension", attrib={"name": f"bot_{bot.id}_{bot.name}_campana", "continue": "false"}
+        )
+        ET.SubElement(directo_ext, "condition", attrib={"field": "destination_number", "expression": f"^bot_{bot.id}$"})
+        directo_cond = ET.SubElement(
+            directo_ext, "condition", attrib={"field": "${nspbx_appointment_id}", "expression": "."}
+        )
+        ET.SubElement(directo_cond, "action", attrib={"application": "answer"})
+        ET.SubElement(
+            directo_cond,
+            "action",
+            attrib={"application": "transfer", "data": f"go XML bot_{bot.id}_n{campana_node['id']}"},
+        )
 
     entry_ext = ET.SubElement(context, "extension", attrib={"name": f"bot_{bot.id}_{bot.name}", "continue": "false"})
     entry_cond = ET.SubElement(entry_ext, "condition", attrib={"field": "destination_number", "expression": f"^bot_{bot.id}$"})
@@ -155,8 +191,17 @@ def build_voicebot_flow_routes(section: ET.Element, context: ET.Element, bot) ->
     for node in flow["nodes"]:
         node_id = str(node["id"])
         node_type = node.get("type", "menu")
+        if node_type == "ai_agent":
+            _build_ai_agent_context(section, bot.id, node_id)
+            continue
         if node_type != "menu":
-            continue  # los nodos de transferencia/colgar solo se resuelven como destino de un edge
+            # Un nodo "transfer"/"hangup" normalmente solo se resuelve
+            # inline como destino de un edge (ver _append_target_actions),
+            # pero además queda con su propio contexto direccionable: lo
+            # necesita avanzar_flujo (ver ai_agent.py) para poder saltar
+            # ahí desde un Agente IA, no solo desde un menú.
+            _build_standalone_context(section, bot.id, node_id, node, queues, record_all)
+            continue
 
         outgoing = [e for e in flow["edges"] if str(e.get("source")) == node_id]
         var_name = f"flow_{bot.id}_{node_id}"
@@ -226,7 +271,7 @@ def build_voicebot_flow_routes(section: ET.Element, context: ET.Element, bot) ->
                 continue
             option_ext = ET.SubElement(route_context, "extension", attrib={"name": f"opcion_{digit}", "continue": "false"})
             option_cond = ET.SubElement(option_ext, "condition", attrib={"field": "destination_number", "expression": f"^opt{_escape_regex_digit(digit)}$"})
-            _append_target_actions(option_cond, target, bot.id)
+            _append_target_actions(option_cond, target, bot.id, queues, record_all)
 
         # Sin marcar nada el destino llega como "opt" pelado; se le da una
         # vuelta más al menú antes de rendirse, que es lo que haría una
@@ -252,11 +297,54 @@ def build_voicebot_flow_routes(section: ET.Element, context: ET.Element, bot) ->
     return True
 
 
-def _append_target_actions(cond: ET.Element, target: dict, bot_id: int) -> None:
+def _build_ai_agent_context(section: ET.Element, bot_id: int, node_id: str) -> None:
+    """Contexto de un nodo Agente IA: siempre se llega ya con la llamada
+    contestada (por entry_ext, por el `transfer` de campaña, o por el
+    `transfer` de un nodo menú) — nunca hace su propio `answer`. Fija qué
+    nodo del flujo es (nspbx_bot_id + nspbx_node_id) y entrega el control
+    al voizbot; `ai_agent.py` carga el prompt, las herramientas y las
+    salidas de ESE nodo directo de bot.flow_json (ver ai_agent.py)."""
+    enter_context = ET.SubElement(section, "context", attrib={"name": f"bot_{bot_id}_n{node_id}"})
+    enter_ext = ET.SubElement(enter_context, "extension", attrib={"name": "enter", "continue": "false"})
+    enter_cond = ET.SubElement(enter_ext, "condition", attrib={"field": "destination_number", "expression": ".*"})
+    ET.SubElement(enter_cond, "action", attrib={"application": "set", "data": f"nspbx_bot_id={bot_id}"})
+    ET.SubElement(enter_cond, "action", attrib={"application": "set", "data": f"nspbx_node_id={node_id}"})
+    ET.SubElement(
+        enter_cond, "action", attrib={"application": "socket", "data": f"{settings.voicebot_esl_socket} async full"}
+    )
+    ET.SubElement(enter_cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+
+
+def _build_standalone_context(
+    section: ET.Element,
+    bot_id: int,
+    node_id: str,
+    node: dict,
+    queues: list | None = None,
+    record_all: bool = False,
+) -> None:
+    """Contexto direccionable para un nodo "transfer"/"hangup" que no es
+    destino de ningún menú — sin esto FreeSWITCH no tiene a dónde ir con
+    `transfer go XML bot_{id}_n{node_id}` cuando `avanzar_flujo` (ver
+    ai_agent.py) salta ahí desde un Agente IA. Reusa exactamente la misma
+    lógica que ya resuelve estos nodos como destino de un edge."""
+    enter_context = ET.SubElement(section, "context", attrib={"name": f"bot_{bot_id}_n{node_id}"})
+    enter_ext = ET.SubElement(enter_context, "extension", attrib={"name": "enter", "continue": "false"})
+    enter_cond = ET.SubElement(enter_ext, "condition", attrib={"field": "destination_number", "expression": ".*"})
+    _append_target_actions(enter_cond, node, bot_id, queues, record_all)
+
+
+def _append_target_actions(
+    cond: ET.Element, target: dict, bot_id: int, queues: list | None = None, record_all: bool = False
+) -> None:
     data = target.get("data", {})
     ttype = target.get("type", "menu")
 
-    if ttype == "menu":
+    if ttype in ("menu", "ai_agent"):
+        # Ambos se referencian siempre por su propio contexto — un nodo
+        # Agente IA nunca embebe el prompt acá, es ahí donde se fija
+        # nspbx_node_id y se entrega el control al voizbot (ver el bucle
+        # de arriba y ai_agent.py).
         ET.SubElement(cond, "action", attrib={"application": "transfer", "data": f"go XML bot_{bot_id}_n{target['id']}"})
         return
 
@@ -267,29 +355,32 @@ def _append_target_actions(cond: ET.Element, target: dict, bot_id: int) -> None:
         ET.SubElement(cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
         return
 
+    if ttype == "transfer" and str(data.get("target_type") or "extension") == "queue":
+        # A una COLA de mod_callcenter y no a una extensión — se busca por
+        # id en vez de dialar su DID (Queue.extension) y volver a caer en
+        # el context "default": así no depende de que ese número no
+        # choque con el de una extensión real (ver auditoría del flujo,
+        # esa colisión SÍ puede pasar y dejaría la cola inalcanzable).
+        # Mismo mecanismo que usa la entrada directa por DID (ver
+        # _append_queue_routes en config_generator.py).
+        queue = next((q for q in (queues or []) if q.id == data.get("queue_id")), None)
+        if not queue or not queue.enabled:
+            ET.SubElement(cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+            return
+        ET.SubElement(cond, "action", attrib={"application": "answer"})
+        if queue.record and not record_all:
+            append_record_actions(cond)
+        ET.SubElement(cond, "action", attrib={"application": "set", "data": "hangup_after_bridge=false"})
+        ET.SubElement(cond, "action", attrib={"application": "callcenter", "data": f"{queue.name}@$${{domain}}"})
+        if queue.failover_extension:
+            ET.SubElement(cond, "action", attrib={"application": "transfer", "data": f"{queue.failover_extension} XML default"})
+        else:
+            ET.SubElement(cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+        return
+
     if ttype == "transfer":
         extension = str(data.get("extension", "")).strip()
         if not extension:
-            ET.SubElement(cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
-            return
-        if extension == "ai_agent":
-            # Qué gestión viene a resolver el bot en esta rama del menú
-            # (confirmar / reagendar / cancelar / agendar). Se fija como
-            # variable del canal ANTES de entregar el control: sin esto el
-            # bot no sabía qué tecla marcó la persona y tenía que
-            # preguntarle otra vez. Ver app/services/ai_intents.py.
-            intent = str(data.get("ai_intent", "") or "").strip().lower()
-            if intent:
-                ET.SubElement(cond, "action", attrib={"application": "set", "data": f"nspbx_ai_intent={intent}"})
-            # Entrega el control de la llamada al voizbot conversacional
-            # (ESL "outbound socket" — ver backend/app/services/ai_agent.py,
-            # que corre en el contenedor "voicebot", separado del backend
-            # de la API REST). async/full: FreeSWITCH conecta hacia allá y
-            # le cede la sesión completa (grabar, reproducir, colgar) hasta
-            # que la app "socket" retorna (cuando el voizbot cuelga).
-            ET.SubElement(
-                cond, "action", attrib={"application": "socket", "data": f"{settings.voicebot_esl_socket} async full"}
-            )
             ET.SubElement(cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
             return
         whisper_audio = data.get("whisper_audio_path")

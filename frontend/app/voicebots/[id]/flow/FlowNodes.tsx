@@ -72,18 +72,20 @@ export function MenuNodeView({ data, selected }: { data: FlowNodeData; selected?
 }
 
 export function TransferNodeView({ data, selected }: { data: FlowNodeData; selected?: boolean }) {
+  const esCola = data.target_type === "queue";
   return (
     <NodeShell
       color="bg-gradient-to-r from-emerald-600 to-teal-600"
-      icon="📞"
+      icon={esCola ? "👥" : "📞"}
       title={data.label || "Transferir"}
       selected={selected}
     >
       <Handle type="target" position={Position.Left} />
       <div>
-        Extensión: <span className="font-mono text-fg">{data.extension || "—"}</span>
+        {esCola ? "Cola" : "Extensión"}:{" "}
+        <span className="font-mono text-fg">{(esCola ? data.queue_name : data.extension) || "—"}</span>
       </div>
-      {(data.whisper_audio_path || data.whisper_text) && (
+      {!esCola && (data.whisper_audio_path || data.whisper_text) && (
         <div className="mt-1 text-[11px] text-ok-text">🗨 Con aviso previo al agente</div>
       )}
     </NodeShell>
@@ -110,8 +112,98 @@ export function HangupNodeView({ data, selected }: { data: FlowNodeData; selecte
   );
 }
 
+const HERRAMIENTA_LABEL: Record<string, string> = {
+  consultar_disponibilidad: "Consultar agenda",
+  agendar_cita: "Agendar",
+  confirmar_cita: "Confirmar",
+  cancelar_cita: "Cancelar",
+  reagendar_cita: "Reagendar",
+};
+
+function Pill({ tone, children }: { tone: "brand" | "violet" | "neutral"; children: React.ReactNode }) {
+  const toneClass =
+    tone === "brand"
+      ? "bg-brand-soft text-brand-text"
+      : tone === "violet"
+        ? "bg-violet-soft text-violet-text"
+        : "bg-surface-3 text-fg-soft";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${toneClass}`}>
+      {children}
+    </span>
+  );
+}
+
+export function AiAgentNodeView({ data, selected }: { data: FlowNodeData; selected?: boolean }) {
+  const exits = data.exits || [];
+  // terminar_llamada siempre está disponible, no es una elección del
+  // usuario (ver NodePanel) — mostrarla como si fuera un chip más
+  // seleccionado confunde, así que no se lista acá.
+  const tools = (data.tools || []).filter((t) => t !== "terminar_llamada");
+
+  return (
+    <NodeShell
+      color="bg-gradient-to-r from-violet-600 to-indigo-600"
+      icon="🤖"
+      title={data.label || "Agente IA"}
+      selected={selected}
+    >
+      <Handle type="target" position={Position.Left} />
+
+      {(data.start || data.campaign_entry) && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {data.start && <Pill tone="brand">Nodo inicial</Pill>}
+          {data.campaign_entry && <Pill tone="violet">Entrada de campaña</Pill>}
+        </div>
+      )}
+
+      <div className="mb-2.5 line-clamp-3 whitespace-pre-line rounded-lg bg-surface-2 px-2 py-1.5 text-[11px] leading-snug text-fg-soft">
+        {data.prompt?.trim() ? data.prompt.slice(0, 160) : "Sin instrucciones todavía — abrí el panel para escribir el prompt"}
+      </div>
+
+      {tools.length > 0 && (
+        <div className="mb-2.5 flex flex-wrap gap-1">
+          {tools.map((t) => (
+            <span
+              key={t}
+              className="rounded-md bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-fg-soft"
+            >
+              {HERRAMIENTA_LABEL[t] || t}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="mb-1 flex items-center justify-between text-[10px] text-muted">
+        <span>🔁 hasta {data.max_turns ?? 12} turnos</span>
+        {data.requiere_cita && <span>📋 requiere cita</span>}
+      </div>
+
+      {exits.length > 0 && (
+        <div className="mt-2 space-y-1 border-t border-line pt-2">
+          {exits.map((exit, i) => (
+            <div
+              key={exit.key}
+              className="relative flex items-center justify-between gap-1.5 rounded-md bg-surface-3 px-2 py-1 text-[10px] text-fg-soft"
+            >
+              <span className="truncate">→ {exit.label || exit.key}</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={exit.key}
+                style={{ top: `${(i + 1) * (100 / (exits.length + 1))}%`, background: "#8b5cf6" }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </NodeShell>
+  );
+}
+
 export const nodeTypes = {
   menu: (p: any) => <MenuNodeView data={p.data} selected={p.selected} />,
   transfer: (p: any) => <TransferNodeView data={p.data} selected={p.selected} />,
   hangup: (p: any) => <HangupNodeView data={p.data} selected={p.selected} />,
+  ai_agent: (p: any) => <AiAgentNodeView data={p.data} selected={p.selected} />,
 };

@@ -48,7 +48,22 @@ export interface VoiceBot {
   created_at: string;
 }
 
-export type FlowNodeType = "menu" | "transfer" | "hangup";
+export type FlowNodeType = "menu" | "transfer" | "hangup" | "ai_agent";
+
+export interface AiNodeExit {
+  key: string;
+  label: string;
+}
+
+export interface AiTemplate {
+  key: string;
+  label: string;
+  prompt: string;
+  tools: string[];
+  max_turns: number;
+  greeting: string;
+  requiere_cita: boolean;
+}
 
 export interface FlowNodeData {
   [key: string]: unknown;
@@ -57,9 +72,27 @@ export interface FlowNodeData {
   audio_path?: string | null;
   tts_text?: string | null;
   extension?: string;
+  // Nodo "transfer": a una extensión (por defecto, ver `extension` arriba)
+  // o a una cola de mod_callcenter. `queue_name` es solo para mostrar en
+  // el canvas sin tener que ir a buscarla — la fuente de verdad para el
+  // dialplan es `queue_id`.
+  target_type?: "extension" | "queue";
+  queue_id?: number;
+  queue_name?: string;
   whisper_audio_path?: string | null;
+  // Legado: selección fija de gestión (ver ai_intents.py). El backend la
+  // migra sola a un nodo "ai_agent" al leer el flujo — ya no se escribe
+  // desde acá, solo puede seguir apareciendo en flujos viejos sin reabrir.
   ai_intent?: string;
   whisper_text?: string | null;
+  // Nodo "ai_agent"
+  prompt?: string;
+  tools?: string[];
+  greeting?: string;
+  max_turns?: number;
+  exits?: AiNodeExit[];
+  campaign_entry?: boolean;
+  requiere_cita?: boolean;
 }
 
 export interface FlowNode {
