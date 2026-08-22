@@ -147,9 +147,14 @@
     <!-- NEEDS DOCUMENTATION -->
 
     <!-- RTP port range: acotado para poder publicar el rango completo en Docker
-         (necesario para audio WebRTC/softphone a través del navegador) -->
+         (necesario para audio WebRTC/softphone a través del navegador).
+         201 puertos (16384-16584) alcanzaban para ~100 llamadas puenteadas
+         como techo absoluto (2 puertos por llamada), sin margen para IA ni
+         menús de audio. 16384-32768 es el rango estándar recomendado para
+         FreeSWITCH — sostiene varios miles de llamadas simultáneas sin
+         costo real (los puertos se reservan bajo demanda, no de entrada). -->
     <param name="rtp-start-port" value="16384"/>
-    <param name="rtp-end-port" value="16584"/>
+    <param name="rtp-end-port" value="32768"/>
 
     <!-- Test each port to make sure it is not in use by some other process before allocating it to RTP -->
     <!-- <param name="rtp-port-usage-robustness" value="true"/> -->

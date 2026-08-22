@@ -322,6 +322,16 @@ async def gateway_status(name: str) -> dict:
     return out
 
 
+async def extension_registered(extension: str) -> bool:
+    """Si la extensión tiene un softphone/teléfono registrado ahora mismo
+    contra el perfil "internal". Se usa para sacar automáticamente de las
+    colas a un agente cuyo softphone se cayó (cerró la pestaña, perdió
+    red) sin que haya pausado manual — mod_callcenter, si no, lo sigue
+    intentando igual y la llamada se demora en pasar al siguiente."""
+    body = await api(f"sofia_contact internal/{extension}@{runtime_settings.fs_domain}")
+    return not body.strip().lower().startswith("error/")
+
+
 async def dnd_status(extension: str) -> bool:
     """Lee el "no molestar" de una extensión desde la base interna de
     FreeSWITCH — el mismo lugar que consulta el dialplan en cada llamada

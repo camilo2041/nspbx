@@ -16,7 +16,7 @@ from app.core.database import get_session
 from app.core.security import crear_token, hash_password, verificar_password
 from app.models import SystemSettings, User
 from app.schemas import CambiarPasswordRequest, LoginRequest, SesionOut, UserOut
-from app.services import esl, turn
+from app.services import esl, queues_sync, turn
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +160,15 @@ async def poner_dnd(payload: DndRequest, usuario: User = Depends(usuario_actual)
         await esl.dnd_set(usuario.extension.number, payload.enabled)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"FreeSWITCH no disponible: {exc}")
+    # Si es agente de alguna cola, DND también lo saca de ahí — antes solo
+    # bloqueaba llamadas directas y mod_callcenter lo seguía timbrando.
+    # Best-effort: si no es agente de ninguna cola esto no hace nada.
+    try:
+        await queues_sync.set_agent_status(
+            usuario.extension.number, "On Break" if payload.enabled else "Available"
+        )
+    except Exception:
+        logger.warning("No se pudo sincronizar el estado de cola para %s", usuario.extension.number)
     return {"ok": True, "dnd": payload.enabled}
 
 

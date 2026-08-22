@@ -27,7 +27,8 @@ from sqlalchemy.engine import make_url
 from app.core import error_capture
 from app.core.config import settings
 from app.core.database import async_session
-from app.models import SystemErrorLog, SystemSettings
+from app.models import Queue, SystemErrorLog, SystemSettings
+from app.services import esl, queues_sync
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,18 @@ class MaintenanceWorker:
                     await self._drenar_errores()
                 except Exception:
                     logger.exception("Error volcando el buffer de errores del backend")
+                # Cada minuto: si a un agente se le cayó el softphone (cerró
+                # la pestaña, perdió red) sin que haya pausado manual,
+                # mod_callcenter seguía intentándole igual — ver auditoría
+                # de llamadas. Este chequeo es la única fuente de verdad
+                # del estado de agente junto con el DND inmediato de
+                # app/api/auth.py:poner_dnd (mismo cálculo: registrado y
+                # sin DND = Available, si no On Break), así que ambos
+                # convergen siempre sin pisarse.
+                try:
+                    await self._sincronizar_estado_agentes()
+                except Exception:
+                    logger.exception("Error sincronizando estado de agentes de cola")
                 # Grabaciones cada 30 min y no cada 6 horas: con muchas
                 # llamadas grabándose a la vez (ver auditoría de llamadas,
                 # capacidad para 100 asesores) el disco puede llenarse
@@ -107,6 +120,21 @@ class MaintenanceWorker:
             limite = datetime.utcnow() - timedelta(days=_RETENCION_ERRORES_DIAS)
             await session.execute(delete(SystemErrorLog).where(SystemErrorLog.created_at < limite))
             await session.commit()
+
+    async def _sincronizar_estado_agentes(self) -> None:
+        async with async_session() as session:
+            colas = (await session.execute(select(Queue).where(Queue.enabled.is_(True)))).scalars().all()
+        extensiones: set[str] = set()
+        for cola in colas:
+            extensiones.update(queues_sync.parse_agents(cola.agents))
+        for ext in extensiones:
+            try:
+                registrado = await esl.extension_registered(ext)
+                dnd = await esl.dnd_status(ext)
+            except Exception:
+                continue  # FreeSWITCH no disponible en este ciclo, se reintenta el próximo minuto
+            estado = "Available" if (registrado and not dnd) else "On Break"
+            await queues_sync.set_agent_status(ext, estado)
 
     async def _limpiar_grabaciones_periodico(self) -> None:
         async with async_session() as session:

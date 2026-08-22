@@ -160,6 +160,15 @@ async def sync_queue(queue) -> None:
         await _run(f"callcenter_config queue load {qkey}")
 
 
+async def set_agent_status(extension: str, status: str) -> None:
+    """Cambia el estado del agente en mod_callcenter (aplica en todas las
+    colas donde tenga tier, el estado de agente es global). Se usa para que
+    el DND del softphone también saque al asesor de las colas — si la
+    extensión no es agente de ninguna cola, el comando solo falla en
+    silencio (ver `_run`), no hay nada que romper."""
+    await _run(f"callcenter_config agent set status {_agent_key(extension)} '{status}'")
+
+
 async def remove_queue(name: str) -> None:
     qkey = _queue_key(name)
     for agent in await _current_tier_agents(qkey):
