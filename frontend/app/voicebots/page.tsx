@@ -21,7 +21,8 @@ import {
   Toggle,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { Extension, TtsVoice, VoiceBot } from "@/lib/types";
+import { buildFlowTemplate, FLOW_TEMPLATES, FlowTemplateKey } from "@/lib/flow-templates";
+import { AiTemplate, Extension, TtsVoice, VoiceBot } from "@/lib/types";
 
 const empty: Omit<VoiceBot, "id" | "created_at"> = {
   name: "",
@@ -75,6 +76,16 @@ export default function VoicebotsPage() {
   const [ttsVoice, setTtsVoice] = useState("es-CO-SalomeNeural");
   const [ttsProvider, setTtsProvider] = useState<"edge" | "elevenlabs">("edge");
   const [generating, setGenerating] = useState(false);
+  const [aiTemplates, setAiTemplates] = useState<AiTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<FlowTemplateKey>("ia_citas");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<AiTemplate[]>("/api/voicebots/ai-templates")
+      .then(setAiTemplates)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (ttsProvider === "edge") {
@@ -118,6 +129,7 @@ export default function VoicebotsPage() {
     setEditing(null);
     setForm(empty);
     setMenuRows([]);
+    setSelectedTemplate("ia_citas");
     setModal(true);
   };
 
@@ -152,6 +164,32 @@ export default function VoicebotsPage() {
       await closeModal();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al guardar");
+    }
+  };
+
+  const createFromTemplate = async () => {
+    if (!form.name.trim()) {
+      setError("Ponele un nombre al voizbot");
+      return;
+    }
+    setCreating(true);
+    setError("");
+    try {
+      const created = await api.post<VoiceBot>("/api/voicebots", {
+        name: form.name,
+        bot_type: "ivr",
+        welcome_message: null,
+        config: null,
+        enabled: true,
+      });
+      const flow = buildFlowTemplate(selectedTemplate, aiTemplates);
+      await api.put(`/api/voicebots/${created.id}/flow`, flow);
+      setModal(false);
+      router.push(`/voicebots/${created.id}/flow`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al crear el voizbot");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -315,15 +353,81 @@ export default function VoicebotsPage() {
         open={modal}
         onClose={closeModal}
         title={editing ? `Editar voizbot ${editing.name}` : "Nuevo voizbot"}
+        subtitle={editing ? undefined : "Elegí un punto de partida — después podés editar todo en el flujo."}
         footer={
-          <>
-            <Button variant="secondary" onClick={closeModal}>
-              Cerrar
-            </Button>
-            <Button onClick={save}>{editing ? "Guardar" : "Crear"}</Button>
-          </>
+          editing ? (
+            <>
+              <Button variant="secondary" onClick={closeModal}>
+                Cerrar
+              </Button>
+              <Button onClick={save}>Guardar</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={closeModal}>
+                Cancelar
+              </Button>
+              <Button onClick={createFromTemplate} loading={creating}>
+                {creating ? "Creando…" : "Crear voizbot"}
+              </Button>
+            </>
+          )
         }
       >
+        {error && (
+          <div className="mb-4">
+            <ErrorBanner message={error} onClose={() => setError("")} />
+          </div>
+        )}
+
+        {!editing && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              {FLOW_TEMPLATES.map((t) => {
+                const active = t.key === selectedTemplate;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setSelectedTemplate(t.key)}
+                    className={`relative rounded-2xl border p-4 text-left transition-colors ${
+                      active
+                        ? "border-brand bg-surface-2 shadow-[0_0_0_3px_var(--brand-soft)]"
+                        : "border-line bg-surface-2 hover:border-line-strong"
+                    } ${t.key === "blanco" ? "col-span-2 flex items-center gap-3 py-3.5" : ""}`}
+                  >
+                    {t.recommended && (
+                      <span className="absolute right-3 top-3 rounded-full bg-brand-soft px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-text">
+                        Recomendado
+                      </span>
+                    )}
+                    <div
+                      className={`flex shrink-0 items-center justify-center rounded-[10px] text-base ${
+                        t.key === "blanco" ? "h-8 w-8" : "mb-2.5 h-9 w-9"
+                      }`}
+                      style={{ background: t.color }}
+                    >
+                      {t.icon}
+                    </div>
+                    <div>
+                      <div className="text-[13.5px] font-semibold text-fg">{t.label}</div>
+                      <div className="mt-1 text-[11.5px] leading-relaxed text-muted">{t.description}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="border-t border-line pt-4">
+              <Input label="Nombre" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
+              <p className="mt-1.5 text-[11px] text-faint">
+                Se crea con el saludo, el prompt y las herramientas de la plantilla ya cargados en el editor de flujo.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {editing && (
         <div className="space-y-4">
           <Input label="Nombre" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
 
@@ -479,6 +583,7 @@ export default function VoicebotsPage() {
             <Toggle checked={form.enabled} onChange={(v) => setForm({ ...form, enabled: v })} />
           </div>
         </div>
+        )}
       </Modal>
     </div>
   );
