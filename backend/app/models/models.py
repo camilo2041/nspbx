@@ -68,9 +68,9 @@ class Campaign(Base):
     # Mensaje de apertura personalizado, con {variables} que se rellenan por
     # número desde CampaignNumber.extra_data (ej. "Hola {cliente}, te
     # recuerdo tu cita del {fecha}"). Si está vacío, el bot abre con el
-    # saludo genérico de la intención (ver ai_intents.py). El resto de la
-    # conversación (confirmar/reagendar/cancelar con disponibilidad real)
-    # sigue funcionando igual: esto solo reemplaza la primera frase.
+    # saludo propio del nodo Agente IA que reciba la llamada (ver
+    # app/services/ai_node.py). El resto de la conversación sigue
+    # funcionando igual: esto solo reemplaza la primera frase.
     message_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

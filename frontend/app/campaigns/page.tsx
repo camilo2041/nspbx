@@ -31,9 +31,16 @@ import {
   CampaignNumbersUploadResult,
   CampaignStats,
   CampaignWithStats,
+  FlowNode,
   Trunk,
   VoiceBot,
+  VoiceBotFlow,
 } from "@/lib/types";
+
+// Las dos únicas variables que el saludo de un nodo Agente IA sabe
+// reemplazar (ver ai_agent._con_variables en el backend) — mismo orden
+// que usa el CSV de números.
+const VARIABLES_SOPORTADAS = ["cliente", "fecha"] as const;
 import { statusBadge } from "@/lib/utils";
 
 const empty = { name: "", trunk_id: "", voicebot_id: "", max_concurrency: 5, retries: 0, message_template: "" };
@@ -67,6 +74,43 @@ export default function CampaignsPage() {
   const [editingNumberId, setEditingNumberId] = useState<number | null>(null);
   const archivoRef = useRef<HTMLInputElement>(null);
   const [editingNumberValue, setEditingNumberValue] = useState("");
+  // Nodo Agente IA al que esta campaña entrega la llamada directo (ver
+  // flow_engine.py: el marcado "entrada de campaña", o si no hay ninguno,
+  // el nodo inicial cuando ES un Agente IA) — de su saludo salen las
+  // variables que de verdad importan acá. undefined = todavía sin
+  // consultar, null = consultado y el bot no tiene un nodo así (menú
+  // clásico, sin saludo personalizable).
+  const [nodoSaludoIA, setNodoSaludoIA] = useState<FlowNode | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!selected?.voicebot_id) {
+      setNodoSaludoIA(undefined);
+      return;
+    }
+    let cancelado = false;
+    api
+      .get<VoiceBotFlow>(`/api/voicebots/${selected.voicebot_id}/flow`)
+      .then((flow) => {
+        if (cancelado) return;
+        const nodo =
+          flow.nodes.find((n) => n.type === "ai_agent" && n.data.campaign_entry) ||
+          flow.nodes.find((n) => n.type === "ai_agent" && n.data.start) ||
+          null;
+        setNodoSaludoIA(nodo);
+      })
+      .catch(() => !cancelado && setNodoSaludoIA(undefined));
+    return () => {
+      cancelado = true;
+    };
+  }, [selected?.voicebot_id]);
+
+  // Qué variables usa DE VERDAD el saludo de ese nodo — si no menciona
+  // {cliente}, cargar esa columna es opcional (solo sirve para la
+  // Agenda); si sí la menciona, falta ese dato en una línea hace que el
+  // bot diga la palabra "{cliente}" tal cual en la llamada real.
+  const variablesRequeridas = VARIABLES_SOPORTADAS.filter((v) =>
+    (nodoSaludoIA?.data.greeting || "").includes(`{${v}}`)
+  );
 
   // El modal es alto y el aviso vive arriba de todo — con la vista
   // scrolleada hacia el cuadro de pegar (donde está la atención en ese
@@ -226,24 +270,21 @@ export default function CampaignsPage() {
     await load();
   };
 
-  // Las variables salen directo del mensaje de apertura ({cliente},
-  // {fecha}, ...) — no hace falta declararlas aparte. Pedirlas dos veces
-  // (una al escribir el mensaje, otra en un campo separado antes de
-  // pegar los números) era el propio origen de los bugs anteriores: se
-  // olvidaba llenar ese segundo campo y los datos se perdían en
-  // silencio. Ahora hay una sola fuente de verdad.
-  const nombresColumnas = Array.from(
-    new Set(Array.from((selected?.message_template ?? "").matchAll(/\{(\w+)\}/g), (m) => m[1]))
-  );
+  // Columnas extra fijas del CSV de números — antes salían de las
+  // {variables} del mensaje de apertura de la campaña, pero ese campo se
+  // sacó del formulario (el saludo ahora sale siempre del nodo del bot).
+  // "cliente" y "fecha" quedan como las únicas dos, siempre disponibles:
+  // son las que además sincronizan la cita en la Agenda (ver
+  // _sincronizar_agenda en api/campaigns.py), nada de esto depende de si
+  // hay o no un mensaje de apertura.
+  const nombresColumnas = ["cliente", "fecha"];
 
-  // Plantilla descargable: encabezado + una fila de ejemplo, con las
-  // variables que usa el mensaje de apertura (o cliente/fecha de
-  // ejemplo si la campaña todavía no tiene mensaje). Se abre bien en
-  // Excel en español, donde ";" es el separador de listas por defecto —
-  // el mismo que ya usa el pegado de abajo, así que lo que se descarga
-  // y lo que se pega son lo mismo.
+  // Plantilla descargable: encabezado + una fila de ejemplo. Se abre bien
+  // en Excel en español, donde ";" es el separador de listas por
+  // defecto — el mismo que ya usa el pegado de abajo, así que lo que se
+  // descarga y lo que se pega son lo mismo.
   const descargarPlantilla = () => {
-    const cols = nombresColumnas.length > 0 ? nombresColumnas : ["cliente", "fecha"];
+    const cols = nombresColumnas;
     const ejemploPara = (nombre: string) =>
       nombre.toLowerCase() === "fecha" ? "2026-08-21 09:00" : "Camilo Barragán";
     const encabezado = ["telefono", ...cols].join(";");
@@ -283,18 +324,33 @@ export default function CampaignsPage() {
       return { linea, phone, valores };
     });
 
-    // Si alguna línea trae más datos que {variables} tiene el mensaje de
-    // apertura, esos datos de más se perderían en silencio. Se frena acá
-    // y se avisa exactamente qué línea sobra, en vez de descartar
-    // información sin que nadie lo note.
+    // Si alguna línea trae más de teléfono+cliente+fecha, esos datos de
+    // más se perderían en silencio. Se frena acá y se avisa exactamente
+    // qué línea sobra, en vez de descartar información sin que nadie lo
+    // note.
     const conDatosDeMas = parseadas.filter((p) => p.valores.length > nombresColumnas.length);
     if (conDatosDeMas.length > 0) {
       setErrorNumeros(
-        nombresColumnas.length === 0
-          ? `${conDatosDeMas.length} línea(s) traen datos además del teléfono, pero el mensaje de apertura de esta campaña no tiene ninguna {variable} — esos datos se perderían. Editá la campaña y agregá algo como {cliente} o {fecha} al mensaje antes de cargarlos.`
-          : `${conDatosDeMas.length} línea(s) traen más datos de los que usa el mensaje de apertura (${nombresColumnas.join(", ")}) — revisalas, o agregá la {variable} que falta al mensaje editando la campaña.`
+        `${conDatosDeMas.length} línea(s) traen más datos de los que se esperan (${nombresColumnas.join(", ")}) — revisalas antes de cargar.`
       );
       return;
+    }
+
+    // El saludo del nodo Agente IA de este bot menciona {cliente} y/o
+    // {fecha} (ver más arriba) — si a una línea le falta esa columna, la
+    // llamada real diría la palabra "{cliente}" tal cual en vez de un
+    // nombre. Se frena ANTES de cargar, no después de que ya sonó mal en
+    // una llamada.
+    if (variablesRequeridas.length > 0) {
+      const conFaltantes = parseadas.filter((p) =>
+        variablesRequeridas.some((v) => !p.valores[nombresColumnas.indexOf(v)]?.trim())
+      );
+      if (conFaltantes.length > 0) {
+        setErrorNumeros(
+          `El saludo de "${nodoSaludoIA?.data.label || "este nodo"}" usa ${variablesRequeridas.map((v) => `{${v}}`).join(" y ")}, pero ${conFaltantes.length} línea(s) no traen ese dato — el bot diría la variable tal cual en la llamada. Completalas antes de cargar.`
+        );
+        return;
+      }
     }
     setErrorNumeros("");
 
@@ -544,15 +600,6 @@ export default function CampaignsPage() {
             value={form.retries}
             onChange={(v) => setForm({ ...form, retries: Number(v) })}
           />
-          <Textarea
-            label="Mensaje de apertura personalizado (opcional)"
-            value={form.message_template}
-            onChange={(v) => setForm({ ...form, message_template: v })}
-            rows={3}
-            placeholder="Hola {cliente}, te recuerdo tu cita pendiente para el {fecha}. ¿La confirmas?"
-            hint="Con {variables} que se rellenan por número al cargarlos más abajo. El bot dice esto como primera frase y sigue la conversación normal (confirmar, cancelar o reagendar con disponibilidad real). Vacío = saludo genérico."
-            mono
-          />
         </div>
       </Modal>
 
@@ -598,19 +645,21 @@ export default function CampaignsPage() {
             )}
 
             <div className="mb-5">
-              {nombresColumnas.length > 0 ? (
-                <Note tone="brand">
-                  Esta campaña espera <span className="font-mono">{nombresColumnas.join(", ")}</span> — lo que
-                  usa su mensaje de apertura. Cada línea de abajo: teléfono; {nombresColumnas.join("; ")}.
-                  "cliente" y "fecha" (AAAA-MM-DD HH:MM) además cargan/actualizan la cita en la Agenda.
-                </Note>
-              ) : (
-                <Note tone="muted">
-                  Esta campaña no tiene mensaje de apertura con {"{variables}"}, así que cada línea de abajo es
-                  solo un teléfono. Si querés un saludo personalizado, editá la campaña y escribí algo como
-                  "Hola {"{cliente}"}..." — las variables para cargar los números salen de ahí solas.
-                </Note>
-              )}
+              <Note tone={variablesRequeridas.length > 0 ? "warn" : "brand"}>
+                Cada línea de abajo: teléfono; cliente; fecha (fecha en formato AAAA-MM-DD HH:MM). Cargarlas
+                además cargan/actualizan la cita en la Agenda.{" "}
+                {variablesRequeridas.length > 0 ? (
+                  <>
+                    El saludo de <strong>&quot;{nodoSaludoIA?.data.label || "el nodo de este bot"}&quot;</strong>{" "}
+                    usa <span className="font-mono">{variablesRequeridas.map((v) => `{${v}}`).join(", ")}</span> —
+                    esas columnas son obligatorias para esta campaña, si no el bot las va a decir tal cual.
+                  </>
+                ) : nodoSaludoIA === null ? (
+                  <>Este bot no tiene un nodo Agente IA de entrada — cliente y fecha quedan opcionales.</>
+                ) : (
+                  <>El saludo del nodo de este bot no usa variables — cliente y fecha quedan opcionales.</>
+                )}
+              </Note>
               <div className="mt-2 flex items-center gap-2">
                 <Button size="sm" variant="secondary" onClick={descargarPlantilla}>
                   Descargar plantilla
@@ -636,16 +685,8 @@ export default function CampaignsPage() {
                   value={bulk}
                   onChange={setBulk}
                   rows={4}
-                  placeholder={
-                    nombresColumnas.length > 0
-                      ? "3011234567; Camilo Barragán; 2026-08-21 09:00"
-                      : "5551001\n5551002\n5551003"
-                  }
-                  hint={
-                    nombresColumnas.length > 0
-                      ? `Cada línea: teléfono; ${nombresColumnas.join("; ")} — con "," también sirve, como lo exporte Excel. Fecha en cualquier orden día/mes o mes/día, con año de 2 o 4 dígitos.`
-                      : undefined
-                  }
+                  placeholder="3011234567; Camilo Barragán; 2026-08-21 09:00"
+                  hint='Cada línea: teléfono; cliente; fecha — con "," también sirve, como lo exporte Excel. Fecha en cualquier orden día/mes o mes/día, con año de 2 o 4 dígitos.'
                   mono
                 />
               </div>

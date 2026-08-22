@@ -127,12 +127,12 @@ class CampaignDialer:
                 raise RuntimeError("Campaña sin troncal habilitado")
             exten = f"bot_{bot.id}" if bot and bot.enabled else None
 
-            # Campaña de confirmación de citas: el saludo se arma ACÁ, antes
-            # de marcar, con las variables cargadas para este número
-            # específico — así el bot abre nombrando a la persona y su cita
-            # real en vez del saludo genérico. El resto de la conversación
-            # (confirmar, reagendar, cancelar con disponibilidad real) sigue
-            # siendo la intención "confirmar" de siempre (ver ai_intents.py).
+            # Campaña de confirmación de citas: si tiene una frase de
+            # apertura propia (campañas viejas, de antes de simplificar
+            # esto — ver api/campaigns.py), se arma ACÁ con las variables
+            # de este número. Si no tiene, el bot abre con el saludo que
+            # ya tiene configurado su propio nodo Agente IA — no hace falta
+            # nada especial acá para eso.
             extra_vars: dict[str, str] = {}
             if fresh.message_template and number.extra_data:
                 variables = json.loads(number.extra_data)
@@ -148,14 +148,18 @@ class CampaignDialer:
                     if fecha_dt:
                         variables["fecha"] = formatear_natural(fecha_dt)
                 extra_vars["nspbx_greeting"] = templating.render(fresh.message_template, variables)
-                extra_vars["nspbx_ai_intent"] = "confirmar"
-                # La cita EXACTA (ver _sincronizar_agenda en
-                # api/campaigns.py) — así confirmar_cita/cancelar_cita/
-                # reagendar_cita actúan sobre esta cita puntual y no
-                # adivinan "la próxima confirmada de este teléfono", que
-                # falla si el mismo número tiene más de una cita a la vez.
-                if number.appointment_id:
-                    extra_vars["nspbx_appointment_id"] = str(number.appointment_id)
+            # La cita EXACTA (ver _sincronizar_agenda en api/campaigns.py) —
+            # así confirmar_cita/cancelar_cita/reagendar_cita actúan sobre
+            # esta cita puntual y no adivinan "la próxima confirmada de
+            # este teléfono", que falla si el mismo número tiene más de una
+            # cita a la vez. También es la señal que usa flow_engine.py
+            # para saltarse el menú y entrar directo al nodo Agente IA de
+            # campaña — por eso va SIEMPRE que haya cita, sin importar si
+            # esta campaña tiene o no una frase de apertura propia (antes
+            # dependía de eso, y una campaña sin frase nunca entraba
+            # directo a la IA aunque tuviera la cita bien sincronizada).
+            if number.appointment_id:
+                extra_vars["nspbx_appointment_id"] = str(number.appointment_id)
 
             # La troncal elegida para la campaña va primero; si hay otras
             # habilitadas, quedan como respaldo — si esa no contesta o la
