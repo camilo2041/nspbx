@@ -291,6 +291,25 @@ class AiCallUsage(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class SystemErrorLog(Base):
+    """Errores del propio backend (nivel ERROR o peor), para que el chat
+    de diagnóstico (ver app/services/ops_assistant.py) pueda responder
+    "¿se cayó algo en el sistema?" sin tener que ir a buscar en `docker
+    logs` — antes de esto un error del backend solo existía en stdout,
+    nada quedaba guardado ni era consultable. Ver app/core/error_capture.py
+    (quién los captura) y app/workers/maintenance.py (quién los vuelca acá
+    y los purga)."""
+
+    __tablename__ = "system_error_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    level: Mapped[str] = mapped_column(String(20))
+    logger_name: Mapped[str] = mapped_column(String(200))
+    message: Mapped[str] = mapped_column(Text)
+    traceback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class Queue(Base):
     """Cola de llamadas entrantes (call center), estilo Issabel/FreePBX,
     sobre mod_callcenter de FreeSWITCH."""

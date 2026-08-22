@@ -123,6 +123,29 @@ async def usuario_actual(request: Request) -> User:
     return usuario
 
 
+async def usuario_desde_token_ws(token: str | None, session: AsyncSession) -> User | None:
+    """Para los WebSocket que quedan fuera de `sesion_obligatoria`
+    (`/ws/logs`, `/ws/ops-chat`): un WebSocket de navegador no puede mandar
+    la cabecera Authorization en el handshake, así que el token viaja por
+    query string y se valida acá a mano, con el mismo criterio que arriba
+    (token válido + usuario activo). Devuelve None en vez de levantar,
+    porque quien llama todavía tiene que poder cerrar el socket con un
+    código propio en vez de un 500."""
+    if not token:
+        return None
+    datos = leer_token(token)
+    if not datos:
+        return None
+    try:
+        user_id = int(datos.get("sub", ""))
+    except (TypeError, ValueError):
+        return None
+    usuario = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not usuario or not usuario.enabled:
+        return None
+    return usuario
+
+
 def requiere(*permisos: str):
     """Dependencia que exige TODOS los permisos indicados.
 

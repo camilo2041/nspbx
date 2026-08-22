@@ -21,16 +21,21 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.engine import make_url
 
+from app.core import error_capture
 from app.core.config import settings
 from app.core.database import async_session
-from app.models import SystemSettings
+from app.models import SystemErrorLog, SystemSettings
 
 logger = logging.getLogger(__name__)
 
 _NOMBRE_BACKUP = re.compile(r"^nspbx-\d{8}-\d{6}\.sql\.gz$")
+# Cuánto se guardan los errores del backend para el chat de diagnóstico
+# (ver app/services/ops_assistant.py) — no hace falta que sea configurable
+# como los backups/grabaciones, es solo para diagnosticar lo reciente.
+_RETENCION_ERRORES_DIAS = 14
 
 
 class MaintenanceWorker:
@@ -71,6 +76,26 @@ class MaintenanceWorker:
                 if not self._running:
                     return
                 await asyncio.sleep(60)
+                # Cada minuto y no cada 6 horas: un error de hace 5 horas
+                # sin guardar todavía haría que el chat de diagnóstico
+                # dijera "no hay errores" estando mintiendo por retraso.
+                try:
+                    await self._drenar_errores()
+                except Exception:
+                    logger.exception("Error volcando el buffer de errores del backend")
+
+    async def _drenar_errores(self) -> None:
+        """Vuelca a `system_error_logs` lo que se haya acumulado en el
+        buffer en memoria (ver app/core/error_capture.py) y purga lo
+        viejo. Se llama cada minuto desde `_loop` — si no hay nada nuevo
+        el drain devuelve una lista vacía y esto es casi gratis."""
+        entradas = error_capture.error_buffer_handler.drain()
+        async with async_session() as session:
+            if entradas:
+                session.add_all(SystemErrorLog(**e) for e in entradas)
+            limite = datetime.utcnow() - timedelta(days=_RETENCION_ERRORES_DIAS)
+            await session.execute(delete(SystemErrorLog).where(SystemErrorLog.created_at < limite))
+            await session.commit()
 
     async def ejecutar_una_vez(self) -> None:
         async with async_session() as session:

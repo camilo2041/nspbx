@@ -14,13 +14,11 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import permissions
+from app.core.auth import usuario_desde_token_ws
 from app.core.database import get_session
-from app.core.security import leer_token
-from app.models import User
 from app.services import esl
 
 logger = logging.getLogger(__name__)
@@ -28,25 +26,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _usuario_del_token(token: str | None, session: AsyncSession) -> User | None:
-    if not token:
-        return None
-    datos = leer_token(token)
-    if not datos:
-        return None
-    try:
-        user_id = int(datos.get("sub", ""))
-    except (TypeError, ValueError):
-        return None
-    usuario = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if not usuario or not usuario.enabled:
-        return None
-    return usuario
-
-
 @router.websocket("/ws/logs")
 async def logs_websocket(websocket: WebSocket, session: AsyncSession = Depends(get_session)):
-    usuario = await _usuario_del_token(websocket.query_params.get("token"), session)
+    usuario = await usuario_desde_token_ws(websocket.query_params.get("token"), session)
     # Mismo permiso que troncales/extensiones: quien puede ver esto puede
     # ver el tráfico SIP completo, así que es tan sensible como las
     # credenciales de una troncal.

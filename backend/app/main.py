@@ -14,13 +14,18 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text, update
 
-from app.api import ai_usage, appointments as appointments_api, auth as auth_api, calls as calls_api, campaigns, extensions, inbound_routes, logs_ws, queues as queues_api, settings as settings_api, system, trunks, users as users_api, voicebots
-from app.core import permissions
+from app.api import ai_usage, appointments as appointments_api, auth as auth_api, calls as calls_api, campaigns, extensions, inbound_routes, logs_ws, ops_chat, queues as queues_api, settings as settings_api, system, trunks, users as users_api, voicebots
+from app.core import error_capture, permissions
 from app.core.auth import escribir_requiere, requiere, sesion_obligatoria
 from app.core.config import settings
 from app.core.database import Base, async_session, engine
 from app.core.security import hash_password
 from app.models import CampaignNumber, Queue, Trunk, User
+
+# Antes que cualquier otra cosa loguee un error: así el chat de
+# diagnóstico (ver app/services/ops_assistant.py) también puede ver las
+# fallas que pasan durante el arranque, no solo las de después.
+error_capture.install()
 
 logger = logging.getLogger(__name__)
 from app.services import voice_prompts, xml_endpoints
@@ -233,6 +238,10 @@ app.include_router(xml_endpoints.router)
 # Authorization, así que este router valida el token a mano (ver
 # app/api/logs_ws.py) en vez de con el guardia global de arriba.
 app.include_router(logs_ws.router)
+
+# Chat de diagnóstico — mismo motivo y mismo patrón de auth manual que
+# logs_ws.py (ver app/api/ops_chat.py).
+app.include_router(ops_chat.router)
 
 # El login y "quién soy" se protegen dentro del propio router: pedir el
 # token no puede exigir tener uno.
