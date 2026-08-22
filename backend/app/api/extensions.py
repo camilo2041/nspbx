@@ -4,12 +4,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.runtime_settings import runtime_settings
-from app.models import Extension, Trunk
+from app.models import Extension, Queue, Trunk
 from app.schemas import CallRequest, ExtensionCreate, ExtensionOut, ExtensionUpdate
 from app.services.config_generator import orden_troncales
 from app.services.esl import originate_bridge, reloadxml
 
 router = APIRouter(prefix="/api/extensions", tags=["extensions"])
+
+
+async def _chocar_con_cola(session: AsyncSession, numero: str) -> None:
+    """Mismo chequeo que api/queues.py, del otro lado: si ya existe una
+    cola con este número, una extensión nueva con el mismo número siempre
+    gana en el dialplan (Local_Extension se genera antes que las colas,
+    ver config_generator.py) y la cola queda inalcanzable sin ningún
+    aviso."""
+    existe = (await session.execute(select(Queue).where(Queue.extension == numero))).scalar_one_or_none()
+    if existe:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ya existe la cola \"{existe.name}\" con el número {numero} — esa cola quedaría inalcanzable.",
+        )
 
 
 @router.get("", response_model=list[ExtensionOut])
@@ -20,6 +34,7 @@ async def list_extensions(session: AsyncSession = Depends(get_session)):
 
 @router.post("", response_model=ExtensionOut, status_code=status.HTTP_201_CREATED)
 async def create_extension(payload: ExtensionCreate, session: AsyncSession = Depends(get_session)):
+    await _chocar_con_cola(session, payload.number)
     ext = Extension(**payload.model_dump())
     session.add(ext)
     try:
@@ -46,7 +61,10 @@ async def update_extension(
     ext = await session.get(Extension, extension_id)
     if not ext:
         raise HTTPException(status_code=404, detail="Extensión no encontrada")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "number" in data and data["number"] != ext.number:
+        await _chocar_con_cola(session, data["number"])
+    for field, value in data.items():
         setattr(ext, field, value)
     await session.commit()
     await session.refresh(ext)

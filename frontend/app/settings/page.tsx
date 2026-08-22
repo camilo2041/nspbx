@@ -84,6 +84,7 @@ const empty: SystemSettings = {
   backups_max_gb: 5,
   max_call_duration_minutes: 60,
   max_concurrent_calls: 20,
+  max_concurrent_ai_calls: 20,
 };
 
 export default function SettingsPage() {
@@ -633,6 +634,12 @@ export default function SettingsPage() {
               value={String(form.max_concurrent_calls ?? "")}
               onChange={(v) => set("max_concurrent_calls", Math.max(1, Number(v) || 1))}
               hint="Cuenta ambas patas de cada llamada conectada, no solo campañas. Si se llega al tope, el marcador de campañas deja de originar nuevas hasta que se libere un canal — así nunca se satura la troncal, ni el CPU/RAM del servidor, ni se bloquean las llamadas entrantes."
+            />
+            <Input
+              label="Conversaciones de IA simultáneas"
+              value={String(form.max_concurrent_ai_calls ?? "")}
+              onChange={(v) => set("max_concurrent_ai_calls", Math.max(1, Number(v) || 1))}
+              hint="Cada llamada del voizbot con IA transcribe audio en vivo y llama al modelo de lenguaje — mucho más pesado que una llamada normal. Por encima de este número, la llamada de más se rechaza en vez de arriesgar que se caigan todas las conversaciones de IA en curso a la vez."
             />
             <Input
               label="Duración máxima por llamada — minutos"

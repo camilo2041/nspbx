@@ -196,6 +196,7 @@ class SystemSettingsOut(BaseModel):
     backups_max_gb: float = 5.0
     max_call_duration_minutes: int = 60
     max_concurrent_calls: int = 20
+    max_concurrent_ai_calls: int = 20
 
 
 class SystemSettingsUpdate(BaseModel):
@@ -242,6 +243,7 @@ class SystemSettingsUpdate(BaseModel):
     # legítimo para quien de verdad necesita llamadas sin límite de tiempo.
     max_call_duration_minutes: Optional[int] = Field(default=None, ge=0, le=1440)
     max_concurrent_calls: Optional[int] = Field(default=None, ge=1, le=500)
+    max_concurrent_ai_calls: Optional[int] = Field(default=None, ge=1, le=500)
 
 
 class CallLogOut(BaseModel):

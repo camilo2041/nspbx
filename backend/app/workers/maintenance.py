@@ -72,7 +72,7 @@ class MaintenanceWorker:
                 await self.ejecutar_una_vez()
             except Exception:
                 logger.exception("Error en MaintenanceWorker")
-            for _ in range(6 * 60):  # 6 horas, en pasos de 1 minuto
+            for minuto in range(6 * 60):  # 6 horas, en pasos de 1 minuto
                 if not self._running:
                     return
                 await asyncio.sleep(60)
@@ -83,6 +83,17 @@ class MaintenanceWorker:
                     await self._drenar_errores()
                 except Exception:
                     logger.exception("Error volcando el buffer de errores del backend")
+                # Grabaciones cada 30 min y no cada 6 horas: con muchas
+                # llamadas grabándose a la vez (ver auditoría de llamadas,
+                # capacidad para 100 asesores) el disco puede llenarse
+                # bastante antes de que se cumpla una tanda de 6 horas —
+                # y un disco lleno se lleva puesto FreeSWITCH y Postgres
+                # juntos, no es solo "faltó espacio".
+                if (minuto + 1) % 30 == 0:
+                    try:
+                        await self._limpiar_grabaciones_periodico()
+                    except Exception:
+                        logger.exception("Error limpiando grabaciones")
 
     async def _drenar_errores(self) -> None:
         """Vuelca a `system_error_logs` lo que se haya acumulado en el
@@ -96,6 +107,15 @@ class MaintenanceWorker:
             limite = datetime.utcnow() - timedelta(days=_RETENCION_ERRORES_DIAS)
             await session.execute(delete(SystemErrorLog).where(SystemErrorLog.created_at < limite))
             await session.commit()
+
+    async def _limpiar_grabaciones_periodico(self) -> None:
+        async with async_session() as session:
+            row = await session.get(SystemSettings, 1)
+            if not row:
+                return
+            retencion = row.recordings_retention_days
+            tope_gb = row.recordings_max_gb
+        await self._limpiar_grabaciones(retencion, tope_gb)
 
     async def ejecutar_una_vez(self) -> None:
         async with async_session() as session:

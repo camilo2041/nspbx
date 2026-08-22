@@ -186,7 +186,11 @@ class SystemSettings(Base):
     # Válvula de seguridad además de la retención por días: si algo hace
     # que se graben más llamadas de lo esperado, esto frena el crecimiento
     # del disco aunque las grabaciones individualmente sean "recientes".
-    recordings_max_gb: Mapped[float] = mapped_column(Float, default=20.0)
+    # 20GB (el default viejo) se llena en pocas horas con una operación de
+    # varias decenas de asesores grabando a la vez — 50GB es un default de
+    # arranque más razonable, pero de verdad hay que ajustarlo al disco
+    # real de cada instalación (ver Ajustes), no confiar en el default.
+    recordings_max_gb: Mapped[float] = mapped_column(Float, default=50.0)
     # Misma válvula que recordings_max_gb, pero para /backups: antes solo
     # tenía límite por días, así que una racha de respaldos manuales
     # ("Respaldar ahora" repetido) podía acumular más de la cuenta sin que
@@ -206,6 +210,14 @@ class SystemSettings(Base):
     # tráfico entrante) superaran lo que la troncal real soporta, y el
     # proveedor empieza a rechazar TODO, entrantes incluidas.
     max_concurrent_calls: Mapped[int] = mapped_column(Integer, default=20)
+    # El voizbot conversacional (ver app/services/ai_agent.py) no tenía
+    # NINGÚN tope propio: cada llamada de IA abre su propia transcripción
+    # en vivo + llamadas al modelo de lenguaje, sin límite. Un pico de
+    # llamadas de IA a la vez podía agotar memoria del proceso y tirar
+    # abajo TODAS las conversaciones de IA en curso a la vez, no solo la
+    # más nueva. Rechazar limpio por encima de este número es preferible a
+    # dejar que el proceso entero se caiga.
+    max_concurrent_ai_calls: Mapped[int] = mapped_column(Integer, default=20)
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

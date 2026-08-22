@@ -231,6 +231,7 @@ export interface SystemSettings {
   backups_max_gb: number;
   max_call_duration_minutes: number;
   max_concurrent_calls: number;
+  max_concurrent_ai_calls: number;
 }
 
 export interface MaintenanceStatus {

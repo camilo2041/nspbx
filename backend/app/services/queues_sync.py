@@ -70,16 +70,25 @@ def build_callcenter_xml(queues: list) -> str:
             "discard-abandoned-after": "60",
             "abandoned-resume-allowed": "false",
         }
-        if queue.record:
-            params["record-template"] = (
-                "$${recordings_dir}/queue_"
-                + queue.name
-                + "_${strftime(%Y-%m-%d-%H-%M-%S)}_${caller_id_number}.wav"
-            )
+        # La grabación de "Queue.record" NO se hace acá con el
+        # record-template propio de mod_callcenter — ese mecanismo grababa
+        # de verdad, pero con un nombre de archivo sin uuid (colisión
+        # posible bajo carga) y sin ninguna forma de enlazarlo al CDR de la
+        # llamada: la grabación existía en disco pero era invisible/no
+        # reproducible desde el panel. Se resuelve en cambio en el propio
+        # dialplan (ver _append_queue_routes en config_generator.py), con
+        # el mismo `record_session`/`nspbx_recording` que ya usa la
+        # grabación global — mismo archivo, mismo mecanismo, sí enlazable.
         for name, value in params.items():
             ET.SubElement(queue_el, "param", attrib={"name": name, "value": value})
 
-        for ext in parse_agents(queue.agents):
+        # position=str(i+1) y no "1" fijo para todos: estrategias como
+        # "top-down"/"sequentially-by-agent-order" ordenan a los agentes
+        # POR esta posición — con todos empatados en 1, esas dos
+        # estrategias no tenían ningún orden real para seguir (eran
+        # indistinguibles de round-robin/ring-all pese a estar elegidas en
+        # el panel).
+        for posicion, ext in enumerate(parse_agents(queue.agents), start=1):
             akey = _agent_key(ext)
             if akey not in seen_agents:
                 seen_agents.add(akey)
@@ -98,7 +107,9 @@ def build_callcenter_xml(queues: list) -> str:
                         "busy-delay-time": "10",
                     },
                 )
-            ET.SubElement(tiers_el, "tier", attrib={"agent": akey, "queue": qkey, "level": "1", "position": "1"})
+            ET.SubElement(
+                tiers_el, "tier", attrib={"agent": akey, "queue": qkey, "level": "1", "position": str(posicion)}
+            )
 
     return ET.tostring(root, encoding="unicode")
 

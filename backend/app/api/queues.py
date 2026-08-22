@@ -6,12 +6,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.core.runtime_settings import runtime_settings
-from app.models import Queue
+from app.models import Extension, Queue
 from app.schemas import QueueCreate, QueueUpdate
 from app.services import esl
 from app.services.queues_sync import parse_agents, remove_queue, sync_queue, write_callcenter_conf
 
 router = APIRouter(prefix="/api/queues", tags=["queues"])
+
+
+async def _chocar_con_extension(session: AsyncSession, numero: str) -> None:
+    """Nada impedía crear una cola con el mismo número que una extensión
+    real — en el dialplan, `Local_Extension` se genera ANTES que las
+    colas y gana siempre (ver config_generator.py), así que la cola
+    quedaba inalcanzable por ese número, sin ningún aviso en el panel."""
+    existe = (await session.execute(select(Extension).where(Extension.number == numero))).scalar_one_or_none()
+    if existe:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ya existe una extensión con el número {numero} — una cola con ese mismo número quedaría inalcanzable.",
+        )
 
 
 def _out(queue: Queue) -> dict:
@@ -57,6 +70,7 @@ async def list_queues(session: AsyncSession = Depends(get_session)):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_queue(payload: QueueCreate, session: AsyncSession = Depends(get_session)):
+    await _chocar_con_extension(session, payload.extension)
     data = payload.model_dump()
     agents = data.pop("agents")
     queue = Queue(**data, agents=json.dumps(agents))
@@ -87,6 +101,8 @@ async def update_queue(queue_id: int, payload: QueueUpdate, session: AsyncSessio
         raise HTTPException(status_code=404, detail="Cola no encontrada")
     old_name = queue.name
     data = payload.model_dump(exclude_unset=True)
+    if "extension" in data and data["extension"] != queue.extension:
+        await _chocar_con_extension(session, data["extension"])
     if "agents" in data:
         data["agents"] = json.dumps(data["agents"])
     for field, value in data.items():

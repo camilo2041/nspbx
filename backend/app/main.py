@@ -132,6 +132,9 @@ _COLUMN_PATCHES = [
     "INTEGER REFERENCES appointments(id) ON DELETE SET NULL",
     "ALTER TABLE ai_call_usage ADD COLUMN IF NOT EXISTS action_appointment_date TIMESTAMP",
     "ALTER TABLE ai_call_usage ADD COLUMN IF NOT EXISTS action_patient_name VARCHAR(150)",
+    # Tope de conversaciones de IA simultáneas — antes no existía ninguno,
+    # ver app/services/ai_agent.py.
+    "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS max_concurrent_ai_calls INTEGER NOT NULL DEFAULT 20",
 ]
 
 

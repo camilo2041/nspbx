@@ -3,6 +3,7 @@ import xml.etree.ElementTree as ET
 
 from app.core.runtime_settings import runtime_settings
 from app.services import voice_prompts
+from app.services.dialplan_recording import append_record_actions
 from app.services.flow_engine import build_voicebot_flow_routes
 
 
@@ -160,7 +161,9 @@ def _parse_bot_menu(config_json: str | None) -> dict[str, str]:
     return out
 
 
-def _append_voicebot_routes(section: ET.Element, context: ET.Element, bots: list) -> None:
+def _append_voicebot_routes(
+    section: ET.Element, context: ET.Element, bots: list, queues: list | None = None, record_all: bool = False
+) -> None:
     """IVR simple (sin IA): saluda con audio o texto (TTS) y enruta según la
     tecla presionada hacia una extensión, reutilizando Local_Extension.
 
@@ -174,9 +177,15 @@ def _append_voicebot_routes(section: ET.Element, context: ET.Element, bots: list
     contexto destino hace un dialplan-hunt nuevo con el dígito ya capturado.
     """
     for bot in bots:
-        if bot.bot_type != "ivr":
-            continue  # el motor de IA aún no está implementado
-        if build_voicebot_flow_routes(section, context, bot):
+        # `bot_type` ("ivr" vs "ai") es hoy solo una etiqueta para la lista
+        # de voizbots — no cambia cómo se genera el dialplan. Antes un bot
+        # creado como "ai" se saltaba ACÁ ENTERO y quedaba inmarcable (ni
+        # siquiera generaba la extensión bot_{id}), de cuando el editor de
+        # flujo (con nodos Agente IA, ver flow_engine.py) todavía no
+        # existía. Un bot "puramente IA" hoy se arma poniendo el nodo
+        # inicial del flujo como Agente IA en vez de un menú — no necesita
+        # ningún trato especial acá.
+        if build_voicebot_flow_routes(section, context, bot, queues, record_all):
             continue  # el bot tiene un flujo visual (nodos/edges); ya se generó su dialplan
         menu = _parse_bot_menu(bot.config)
         var_name = f"ivr_digit_{bot.id}"
@@ -303,17 +312,25 @@ def _append_outbound_route(context: ET.Element, trunks: list) -> None:
     ET.SubElement(condition, "action", attrib={"application": "bridge", "data": destinos})
 
 
-def _append_queue_routes(context: ET.Element, queues: list) -> None:
+def _append_queue_routes(context: ET.Element, queues: list, record_all: bool = False) -> None:
     """Extensión de entrada de cada cola: contesta y entra a mod_callcenter.
     Si la cola se agota (timeout/sin agentes) o `callcenter` falla, sigue a
     la extensión de desbordamiento (o cuelga si no hay una configurada) —
-    igual que el "Fail over destination" de las colas en Issabel/FreePBX."""
+    igual que el "Fail over destination" de las colas en Issabel/FreePBX.
+
+    `record_all`: si la grabación global YA está prendida, la llamada
+    entera se graba desde el contexto de entrada (`_append_recording_hook`)
+    y grabar de nuevo acá sería un segundo `record_session` sobre el mismo
+    canal. Solo se graba acá cuando `Queue.record` es la ÚNICA razón para
+    grabar esta llamada."""
     for queue in queues:
         if not queue.enabled:
             continue
         extension = ET.SubElement(context, "extension", attrib={"name": f"queue_{queue.name}", "continue": "false"})
         condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": f"^{queue.extension}$"})
         ET.SubElement(condition, "action", attrib={"application": "answer"})
+        if queue.record and not record_all:
+            append_record_actions(condition)
         ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=false"})
         ET.SubElement(condition, "action", attrib={"application": "callcenter", "data": f"{queue.name}@$${{domain}}"})
         if queue.failover_extension:
@@ -339,7 +356,12 @@ def _append_inbound_routes(public_context: ET.Element, routes: list) -> None:
     tag_cond = ET.SubElement(tag_ext, "condition")
     ET.SubElement(tag_cond, "action", attrib={"application": "set", "data": "outside_call=true"})
 
-    ordered = sorted((r for r in routes if r.enabled), key=lambda r: r.priority)
+    # (prioridad, id) y no solo prioridad: dos rutas empatadas en prioridad
+    # necesitan un desempate determinístico — sin el id, el orden entre
+    # ellas dependía de en qué orden las devolviera la consulta a la base,
+    # que no tiene por qué coincidir con el orden que ve el admin en la
+    # lista del panel (esa sí ya ordena por (priority, id)).
+    ordered = sorted((r for r in routes if r.enabled), key=lambda r: (r.priority, r.id))
     for route in ordered:
         pattern = route.did_pattern.strip()
         expression = ".*" if pattern.lower() in ("any", "*", "") else f"^{pattern}$"
@@ -358,39 +380,10 @@ def _append_inbound_routes(public_context: ET.Element, routes: list) -> None:
 
 def _append_recording_hook(context: ET.Element) -> None:
     """Graba TODA llamada del contexto. Va primero y con continue="true"
-    para que la llamada siga su ruteo normal después.
-
-    `nspbx_recording` guarda la ruta en el propio canal, así viaja dentro
-    del CDR que FreeSWITCH manda al backend al colgar y la app sabe qué
-    archivo corresponde a cada llamada (ver backend/app/api/calls.py).
-    """
+    para que la llamada siga su ruteo normal después."""
     extension = ET.SubElement(context, "extension", attrib={"name": "nspbx_grabar_todo", "continue": "true"})
     condition = ET.SubElement(extension, "condition")
-    ET.SubElement(condition, "action", attrib={"application": "set", "data": "RECORD_STEREO=false"})
-    # Organizadas por fecha (AAAA/MM/DD) en vez de todas sueltas en un solo
-    # directorio — con meses de campañas activas, un directorio plano se
-    # vuelve imposible de navegar a mano y de acotar por retención.
-    dia = "${strftime(%Y)}/${strftime(%m)}/${strftime(%d)}"
-    ET.SubElement(
-        condition,
-        "action",
-        attrib={"application": "set", "data": f"nspbx_recording=$${{recordings_dir}}/{dia}/llamada_${{uuid}}.wav"},
-    )
-    # `record_session` no crea subdirectorios nuevos por su cuenta — hay
-    # que asegurarse de que la carpeta del día exista ANTES de grabar.
-    # `system` (no `bg_system`) porque record_session, la acción
-    # siguiente, necesita que el mkdir ya haya terminado.
-    ET.SubElement(
-        condition,
-        "action",
-        attrib={"application": "system", "data": f"mkdir -p $${{recordings_dir}}/{dia}"},
-    )
-    # `record_session` directo, NO vía execute_on_answer: en las llamadas
-    # SALIENTES el canal ya viene contestado cuando entra al dialplan, así
-    # que ese disparador no llegaba a ejecutarse nunca y no se generaba
-    # ningún archivo (confirmado: el CDR traía la ruta pero el directorio
-    # de grabaciones estaba vacío). Graba en segundo plano y no bloquea.
-    ET.SubElement(condition, "action", attrib={"application": "record_session", "data": "${nspbx_recording}"})
+    append_record_actions(condition)
 
 
 def _append_call_limits_hook(context: ET.Element, max_minutes: int) -> None:
@@ -418,6 +411,23 @@ def _append_call_limits_hook(context: ET.Element, max_minutes: int) -> None:
     )
 
 
+def _append_ringback_hook(context: ET.Element) -> None:
+    """Sin esto quien llama a una extensión o sale por troncal no oye NADA
+    mientras timbra: `bridge`/`originate` solo sintetizan un tono propio si
+    la variable de canal `ringback` está seteada, y acá nunca se seteaba —
+    confirmado auditando el dialplan completo. Un llamante remoto (PSTN)
+    no lo nota, porque su propio conmutador genera el timbre; quien sí se
+    queda en silencio es un interno (softphone, otra extensión) o una
+    llamada saliente por troncal sin early media real del otro lado.
+
+    `es-ring` (ver vars.xml) en vez de uno propio de Colombia: no hay un
+    cadencia oficial ya cargada en esta instalación de FreeSWITCH y es
+    preferible una europea real y verificada que inventar una."""
+    extension = ET.SubElement(context, "extension", attrib={"name": "nspbx_ringback", "continue": "true"})
+    condition = ET.SubElement(extension, "condition")
+    ET.SubElement(condition, "action", attrib={"application": "set", "data": "ringback=${es-ring}"})
+
+
 def build_dialplan_xml(
     extensions: list,
     bots: list,
@@ -433,13 +443,14 @@ def build_dialplan_xml(
     context = ET.SubElement(section, "context", attrib={"name": "default"})
 
     _append_call_limits_hook(context, max_call_minutes)
+    _append_ringback_hook(context)
     if record_all:
         _append_recording_hook(context)
     _append_dnd_feature_codes(context)
     _append_dnd_hook(context, extensions)
     _append_local_extension_route(context, extensions)
-    _append_voicebot_routes(section, context, bots)
-    _append_queue_routes(context, queues or [])
+    _append_voicebot_routes(section, context, bots, queues, record_all)
+    _append_queue_routes(context, queues or [], record_all)
 
     # Echo test
     echo = ET.SubElement(context, "extension", attrib={"name": "Echo_Test", "continue": "false"})
