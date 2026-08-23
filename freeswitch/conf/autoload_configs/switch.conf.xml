@@ -148,13 +148,17 @@
 
     <!-- RTP port range: acotado para poder publicar el rango completo en Docker
          (necesario para audio WebRTC/softphone a través del navegador).
-         201 puertos (16384-16584) alcanzaban para ~100 llamadas puenteadas
-         como techo absoluto (2 puertos por llamada), sin margen para IA ni
-         menús de audio. 16384-32768 es el rango estándar recomendado para
-         FreeSWITCH — sostiene varios miles de llamadas simultáneas sin
-         costo real (los puertos se reservan bajo demanda, no de entrada). -->
+         REVERTIDO a 201 puertos (2026-08-22): se probó ampliar a 16384-32768
+         y una llamada real se quedó sin audio en la pierna del softphone
+         (la troncal sí conectó y contestaron, pero nunca hubo timbre ni voz
+         del lado del softphone). Docker publicó el rango completo, pero
+         todo indica que el Firewall de Windows no extendió su regla más
+         allá del rango viejo — eso no se puede arreglar desde acá (ver
+         memoria nspbx-docker-desktop-rangos-udp-grandes). Para ampliar de
+         verdad esto hace falta que el usuario abra el rango nuevo en el
+         Firewall de Windows primero. -->
     <param name="rtp-start-port" value="16384"/>
-    <param name="rtp-end-port" value="32768"/>
+    <param name="rtp-end-port" value="16584"/>
 
     <!-- Test each port to make sure it is not in use by some other process before allocating it to RTP -->
     <!-- <param name="rtp-port-usage-robustness" value="true"/> -->

@@ -14,7 +14,27 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text, update
 
-from app.api import ai_usage, appointments as appointments_api, auth as auth_api, calls as calls_api, campaigns, extensions, inbound_routes, logs_ws, ops_chat, queues as queues_api, settings as settings_api, system, trunks, users as users_api, voicebots
+from app.api import (
+    ai_usage,
+    appointments as appointments_api,
+    auth as auth_api,
+    blacklist as blacklist_api,
+    calls as calls_api,
+    campaigns,
+    extensions,
+    inbound_routes,
+    logs_ws,
+    ops_chat,
+    outbound_routes as outbound_routes_api,
+    queues as queues_api,
+    settings as settings_api,
+    system,
+    time_conditions as time_conditions_api,
+    trunks,
+    users as users_api,
+    voicebots,
+)
+
 from app.core import error_capture, permissions
 from app.core.auth import escribir_requiere, requiere, sesion_obligatoria
 from app.core.config import settings
@@ -256,6 +276,10 @@ app.include_router(users_api.router)
 app.include_router(trunks.router, **_con(permissions.TELEFONIA_GESTIONAR))
 app.include_router(extensions.router, **_con(permissions.TELEFONIA_GESTIONAR))
 app.include_router(inbound_routes.router, **_con(permissions.TELEFONIA_GESTIONAR))
+app.include_router(outbound_routes_api.router, **_con(permissions.TELEFONIA_GESTIONAR))
+app.include_router(time_conditions_api.router, **_con(permissions.TELEFONIA_GESTIONAR))
+app.include_router(blacklist_api.router, **_con(permissions.TELEFONIA_GESTIONAR))
+
 
 # El coordinador puede mirar los voizbots pero no editarlos ni lanzar
 # síntesis de voz (que se paga por carácter).

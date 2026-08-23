@@ -532,3 +532,105 @@ class SesionOut(BaseModel):
 class CambiarPasswordRequest(BaseModel):
     password_actual: str
     password_nueva: str = Field(min_length=8, max_length=128)
+
+
+# ---------- Rutas Salientes, Horarios y Lista Negra ----------
+
+class OutboundRouteBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    match_pattern: str = Field(..., min_length=1, max_length=100)
+    strip_digits: int = Field(default=0, ge=0, le=20)
+    prepend_digits: Optional[str] = Field(default=None, max_length=30)
+    trunk_id: Optional[int] = None
+    priority: int = Field(default=10, ge=1, le=1000)
+    enabled: bool = True
+
+
+class OutboundRouteCreate(OutboundRouteBase):
+    pass
+
+
+class OutboundRouteUpdate(BaseModel):
+    name: Optional[str] = None
+    match_pattern: Optional[str] = None
+    strip_digits: Optional[int] = Field(default=None, ge=0, le=20)
+    prepend_digits: Optional[str] = None
+    trunk_id: Optional[int] = None
+    priority: Optional[int] = Field(default=None, ge=1, le=1000)
+    enabled: Optional[bool] = None
+
+
+class OutboundRouteOut(OutboundRouteBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+
+
+class TimeGroupBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    schedule_json: str = Field(default="[]")
+
+
+class TimeGroupCreate(TimeGroupBase):
+    pass
+
+
+class TimeGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    schedule_json: Optional[str] = None
+
+
+class TimeGroupOut(TimeGroupBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+
+
+class TimeConditionBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    time_group_id: int
+    match_destination_type: str = Field(..., pattern="^(extension|queue|voicebot|hangup)$")
+    match_destination_value: Optional[str] = None
+    nomatch_destination_type: str = Field(..., pattern="^(extension|queue|voicebot|hangup)$")
+    nomatch_destination_value: Optional[str] = None
+    enabled: bool = True
+
+
+class TimeConditionCreate(TimeConditionBase):
+    pass
+
+
+class TimeConditionUpdate(BaseModel):
+    name: Optional[str] = None
+    time_group_id: Optional[int] = None
+    match_destination_type: Optional[str] = Field(default=None, pattern="^(extension|queue|voicebot|hangup)$")
+    match_destination_value: Optional[str] = None
+    nomatch_destination_type: Optional[str] = Field(default=None, pattern="^(extension|queue|voicebot|hangup)$")
+    nomatch_destination_value: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+class TimeConditionOut(TimeConditionBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+
+
+class BlacklistBase(BaseModel):
+    phone: str = Field(..., min_length=1, max_length=30)
+    note: Optional[str] = Field(default=None, max_length=255)
+
+
+class BlacklistCreate(BlacklistBase):
+    pass
+
+
+class BlacklistOut(BlacklistBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+

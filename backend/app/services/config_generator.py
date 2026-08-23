@@ -428,6 +428,51 @@ def _append_ringback_hook(context: ET.Element) -> None:
     ET.SubElement(condition, "action", attrib={"application": "set", "data": "ringback=${es-ring}"})
 
 
+def _append_call_pickup_feature_code(context: ET.Element) -> None:
+    """*8 captura cualquier llamada timbrando en la central, o *8EXT para
+    capturar la extensión especificada."""
+    pickup = ET.SubElement(context, "extension", attrib={"name": "nspbx_pickup", "continue": "false"})
+    c = ET.SubElement(pickup, "condition", attrib={"field": "destination_number", "expression": r"^\*8(\d*)$"})
+    ET.SubElement(c, "action", attrib={"application": "answer"})
+    ET.SubElement(c, "action", attrib={"application": "pickup", "data": "$1"})
+
+
+def _append_blacklist_hook(public_context: ET.Element, blacklist: list | None) -> None:
+    """Si el caller_id de la llamada entrante está en la lista negra, rechaza inmediatamente."""
+    if not blacklist:
+        return
+    phones = "|".join(b.phone.strip() for b in blacklist if b.phone.strip())
+    if not phones:
+        return
+    ext = ET.SubElement(public_context, "extension", attrib={"name": "nspbx_blacklist", "continue": "false"})
+    c = ET.SubElement(ext, "condition", attrib={"field": "caller_id_number", "expression": f"^({phones})$"})
+    ET.SubElement(c, "action", attrib={"application": "log", "data": "Llamada bloqueada por Lista Negra"})
+    ET.SubElement(c, "action", attrib={"application": "hangup", "data": "CALL_REJECTED"})
+
+
+def _append_custom_outbound_routes(context: ET.Element, outbound_routes: list | None, trunks: list) -> None:
+    """Rutas salientes por patrón de marcado (ej. ^9(\d+)$ o ^3\d{9}$)."""
+    if not outbound_routes:
+        return
+    trunks_by_id = {t.id: t for t in trunks if t.enabled}
+    ordered = sorted((r for r in outbound_routes if r.enabled), key=lambda r: (r.priority, r.id))
+    for route in ordered:
+        patron = route.match_pattern.strip()
+        if not patron:
+            continue
+        extension = ET.SubElement(context, "extension", attrib={"name": f"outbound_route_{route.id}_{route.name}", "continue": "false"})
+        condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": patron})
+        ET.SubElement(condition, "action", attrib={"application": "log", "data": f"Ruta saliente '{route.name}' coincidente"})
+        ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=true"})
+
+        principal_trunk = trunks_by_id.get(route.trunk_id) if route.trunk_id else None
+        cadena = orden_troncales(trunks, principal_id=principal_trunk.id if principal_trunk else None)
+        if not cadena:
+            continue
+        destinos = "|".join(f"sofia/gateway/{t.name}/${{destination_number}}" for t in cadena)
+        ET.SubElement(condition, "action", attrib={"application": "bridge", "data": destinos})
+
+
 def build_dialplan_xml(
     extensions: list,
     bots: list,
@@ -436,6 +481,8 @@ def build_dialplan_xml(
     inbound_routes: list | None = None,
     record_all: bool = False,
     max_call_minutes: int = 60,
+    outbound_routes: list | None = None,
+    blacklist: list | None = None,
 ) -> str:
     """Genera la seccion <section name='dialplan'> completa."""
     root = _e("document", attrib={"type": "freeswitch/xml"})
@@ -446,6 +493,7 @@ def build_dialplan_xml(
     _append_ringback_hook(context)
     if record_all:
         _append_recording_hook(context)
+    _append_call_pickup_feature_code(context)
     _append_dnd_feature_codes(context)
     _append_dnd_hook(context, extensions)
     _append_local_extension_route(context, extensions)
@@ -458,12 +506,15 @@ def build_dialplan_xml(
     ET.SubElement(c, "action", attrib={"application": "answer"})
     ET.SubElement(c, "action", attrib={"application": "echo"})
 
+    _append_custom_outbound_routes(context, outbound_routes, trunks or [])
     _append_outbound_route(context, trunks or [])
 
     public_context = ET.SubElement(section, "context", attrib={"name": "public"})
     _append_call_limits_hook(public_context, max_call_minutes)
     if record_all:
         _append_recording_hook(public_context)
+    _append_blacklist_hook(public_context, blacklist)
     _append_inbound_routes(public_context, inbound_routes or [])
 
     return ET.tostring(root, encoding="unicode")
+

@@ -169,7 +169,7 @@ RUN ldconfig
 ENV PATH=/usr/local/freeswitch/bin:$PATH
 
 EXPOSE 5060/udp 5060/tcp 5080/udp 8021 5066 7443
-EXPOSE 16384-32768/udp
+EXPOSE 16384-16584/udp
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 # El binario NO respeta --sysconfdir/--localstatedir/--datadir de ./configure

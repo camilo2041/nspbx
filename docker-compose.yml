@@ -68,7 +68,7 @@ services:
       # el puerto publicado).
       - "5066:5066"       # SIP sobre WebSocket sin cifrar (queda de respaldo)
       - "7443:7443"       # SIP sobre WebSocket CIFRADO (wss://) — softphone del navegador
-      - "16384-32768:16384-32768/udp"  # RTP (audio WebRTC del softphone)
+      - "16384-16584:16384-16584/udp"  # RTP (audio WebRTC del softphone)
     labels:
       - "traefik.enable=true"
       # El softphone del navegador entra por wss://PBX_HOST/sip. Traefik

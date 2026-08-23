@@ -397,8 +397,54 @@ export interface MiEntorno {
   sip_server_ip: string | null;
   sip_server_port: number | null;
   // STUN siempre; TURN solo si está configurado en el servidor. Las
-  // credenciales vienen firmadas y con vencimiento, así que esta lista
-  // no se cachea ni se guarda: se pide junto con el resto del entorno
-  // cada vez que el softphone arranca.
-  ice_servers: RTCIceServer[] | null;
+export interface OutboundRoute {
+  id: number;
+  name: string;
+  match_pattern: string;
+  strip_digits: number;
+  prepend_digits: string | null;
+  trunk_id: number | null;
+  priority: number;
+  enabled: boolean;
+  created_at: string;
 }
+
+export interface TimeGroup {
+  id: number;
+  name: string;
+  schedule_json: string;
+  created_at: string;
+}
+
+export interface TimeCondition {
+  id: number;
+  name: string;
+  time_group_id: number;
+  match_destination_type: "extension" | "queue" | "voicebot" | "hangup";
+  match_destination_value: string | null;
+  nomatch_destination_type: "extension" | "queue" | "voicebot" | "hangup";
+  nomatch_destination_value: string | null;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface BlacklistNumber {
+  id: number;
+  phone: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface ActiveChannel {
+  uuid: string;
+  direction: string;
+  created: string;
+  name: string;
+  state: string;
+  cid_name: string;
+  cid_num: string;
+  dest: string;
+  application: string;
+  application_data: string;
+}
+

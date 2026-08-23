@@ -123,6 +123,34 @@ const GROUPS: NavGroup[] = [
         icon: icon(<path strokeLinecap="round" strokeLinejoin="round" d="M9 5l-7 7 7 7M2 12h20" />),
       },
       {
+        href: "/outbound-routes",
+        label: "Rutas salientes",
+        permiso: PERMISOS.telefonia,
+        icon: icon(<path strokeLinecap="round" strokeLinejoin="round" d="M15 19l7-7-7-7M22 12H2" />),
+      },
+      {
+        href: "/time-conditions",
+        label: "Horarios",
+        permiso: PERMISOS.telefonia,
+        icon: icon(
+          <>
+            <circle cx="12" cy="12" r="9" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
+          </>
+        ),
+      },
+      {
+        href: "/blacklist",
+        label: "Lista negra",
+        permiso: PERMISOS.telefonia,
+        icon: icon(
+          <>
+            <circle cx="12" cy="12" r="9" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5.7 5.7l12.6 12.6" />
+          </>
+        ),
+      },
+      {
         href: "/queues",
         label: "Colas",
         permiso: PERMISOS.colas,
@@ -134,6 +162,7 @@ const GROUPS: NavGroup[] = [
           />
         ),
       },
+
       {
         href: "/logs",
         label: "Logs",

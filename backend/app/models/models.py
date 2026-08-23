@@ -410,3 +410,65 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     extension: Mapped["Extension | None"] = relationship(lazy="joined")
+
+
+class OutboundRoute(Base):
+    """Ruta de salida por regla de marcado: selecciona troncal, modifica prefijos
+    (quitar/anteponer) y define prioridad de salida — estilo Issabel."""
+
+    __tablename__ = "outbound_routes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    match_pattern: Mapped[str] = mapped_column(String(100))  # Expresión regular, ej: ^9(\d+)$ o ^(3\d{9})$
+    strip_digits: Mapped[int] = mapped_column(Integer, default=0)
+    prepend_digits: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    trunk_id: Mapped[int | None] = mapped_column(ForeignKey("trunks.id", ondelete="SET NULL"), nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=10)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    trunk: Mapped["Trunk | None"] = relationship(lazy="joined")
+
+
+class TimeGroup(Base):
+    """Grupo de horarios de atención (días y rango de horas) — estilo Issabel."""
+
+    __tablename__ = "time_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    # JSON array de reglas, ej: [{"days": "mon-fri", "time_from": "08:00", "time_to": "18:00"}]
+    schedule_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TimeCondition(Base):
+    """Condición de tiempo: evalúa si una llamada cae en un Grupo de Horarios
+    y la enruta según corresponda (Horario Hábil vs Fuera de Horario)."""
+
+    __tablename__ = "time_conditions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    time_group_id: Mapped[int] = mapped_column(ForeignKey("time_groups.id", ondelete="CASCADE"))
+    match_destination_type: Mapped[str] = mapped_column(String(20))  # extension|queue|voicebot|hangup
+    match_destination_value: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    nomatch_destination_type: Mapped[str] = mapped_column(String(20))  # extension|queue|voicebot|hangup
+    nomatch_destination_value: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    time_group: Mapped["TimeGroup"] = relationship(lazy="joined")
+
+
+class BlacklistNumber(Base):
+    """Lista negra anti-spam: números bloqueados que se cortan en la entrada."""
+
+    __tablename__ = "blacklist_numbers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    phone: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+

@@ -454,9 +454,31 @@ async def originate_bridge(
     return await bgapi(cmd)
 
 
+async def spy_call(supervisor_ext: str, target_uuid: str, mode: str = "spy") -> str:
+    """Supervisión de llamadas en vivo (estilo Vicidial):
+    - mode="spy": Escucha en silencio
+    - mode="whisper": Habla solo con el agente (bleg)
+    - mode="join": Conferencia de 3 vías (aleg + bleg)
+    """
+    vars_prefix = ""
+    if mode == "whisper":
+        vars_prefix = "{eavesdrop_whisper_bleg=true}"
+    elif mode == "join":
+        vars_prefix = "{eavesdrop_whisper_aleg=true,eavesdrop_whisper_bleg=true}"
+
+    cmd = f"originate {vars_prefix}user/{supervisor_ext}@$${{domain}} &eavesdrop({target_uuid})"
+    return await bgapi(cmd)
+
+
+async def get_active_channels() -> str:
+    """Devuelve la lista de canales activos en formato JSON para el panel de monitoreo en vivo."""
+    return await api("show channels as json")
+
+
 async def bgapi(command: str) -> str:
     client = await get_client()
     return await client.bgapi(command)
+
 
 
 _NIVELES_LOG = ("debug", "info", "notice", "warning", "err", "crit", "alert")

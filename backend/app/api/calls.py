@@ -15,17 +15,25 @@ from fastapi.responses import FileResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import BaseModel
+
 from app.core import permissions
 from app.core.auth import requiere, usuario_actual, verificar_secreto_fs
 from app.core.config import settings
 from app.core.database import get_session
 from app.models import AiCallUsage, CallLog, SystemSettings, User
 from app.schemas import CallLogOut
-from app.services import deepgram, llm
+from app.services import deepgram, esl, llm
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["calls"])
+
+
+class SpyRequest(BaseModel):
+    target_uuid: str
+    mode: str = "spy"  # "spy" | "whisper" | "join"
+
 
 # Mismo directorio que /var/lib/freeswitch/recordings del contenedor de
 # FreeSWITCH, montado acá con otro nombre (ver docker-compose.yml). Vive en
@@ -478,3 +486,37 @@ def _resumen_sin_audio(call: CallLog, falta_archivo: bool = False) -> str:
         f"{direccion}{quien}: contestada, {segundos} segundos hablados. "
         "No quedó grabación, así que no hay conversación que analizar."
     )
+
+
+@router.get("/api/calls/active")
+async def get_active_calls(usuario: User = Depends(usuario_actual)):
+    """Obtiene los canales SIP activos en tiempo real desde FreeSWITCH vía ESL."""
+    try:
+        data_json = await esl.get_active_channels()
+        import json
+        parsed = json.loads(data_json)
+        rows = parsed.get("rows", [])
+        return {"total": len(rows), "channels": rows}
+    except Exception as exc:
+        logger.warning("Error obteniendo canales activos: %s", exc)
+        return {"total": 0, "channels": []}
+
+
+@router.post("/api/calls/spy")
+async def spy_on_call(payload: SpyRequest, usuario: User = Depends(usuario_actual)):
+    """Supervisión de llamada en vivo (Espiar/Susurrar/Unirse). Exige que el usuario
+    tenga una extensión asignada."""
+    if not usuario.extension:
+        raise HTTPException(
+            status_code=400,
+            detail="Tu usuario no tiene una extensión asignada para realizar la supervisión",
+        )
+    mode = payload.mode.lower()
+    if mode not in ("spy", "whisper", "join"):
+        raise HTTPException(status_code=400, detail="Modo de supervisión inválido (spy, whisper, join)")
+    try:
+        res = await esl.spy_call(usuario.extension.number, payload.target_uuid, mode=mode)
+        return {"ok": True, "result": res}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"No se pudo iniciar la supervisión: {exc}")
+
