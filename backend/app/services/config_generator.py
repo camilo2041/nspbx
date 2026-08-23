@@ -289,27 +289,25 @@ def orden_troncales(trunks: list, principal_id: int | None = None) -> list:
 
 
 def _append_outbound_route(context: ET.Element, trunks: list) -> None:
-    """Ruta de salida: números externos (7-15 dígitos) vía la cadena de
-    troncales habilitadas, en serie (separadas por "|" en `bridge`, que es
-    la sintaxis de FreeSWITCH para "probá la primera; si no contesta o la
-    rechaza, probá la siguiente"). Con una sola troncal habilitada, esto
-    genera exactamente la misma llamada de antes.
-
-    Nota: es una ruta única simple (no hay aún "outbound routes" con
-    patrones por troncal como en Issabel/FreePBX). Si se necesitan varias
-    troncales con distintos patrones de marcado, esto debe evolucionar a
-    algo configurable.
-    """
+    """Ruta de salida por defecto hacia cualquier número externo (7 a 15 dígitos, con o sin +)."""
     cadena = orden_troncales(trunks)
     if not cadena:
         return
     extension = ET.SubElement(context, "extension", attrib={"name": "Outbound_External", "continue": "false"})
-    condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": r"^(\d{7,15})$"})
+    condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": r"^\+?(\d{7,15})$"})
     nombres = " -> ".join(t.name for t in cadena)
     ET.SubElement(condition, "action", attrib={"application": "log", "data": f"Llamada saliente vía {nombres}"})
     ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=true"})
-    destinos = "|".join(f"sofia/gateway/{t.name}/${{destination_number}}" for t in cadena)
+
+    first_trunk = cadena[0]
+    cid = getattr(first_trunk, "caller_id_number", None) or first_trunk.username
+    if cid:
+        ET.SubElement(condition, "action", attrib={"application": "set", "data": f"effective_caller_id_number={cid}"})
+        ET.SubElement(condition, "action", attrib={"application": "set", "data": f"outbound_caller_id_number={cid}"})
+
+    destinos = "|".join(f"sofia/gateway/{t.name}/$1" for t in cadena)
     ET.SubElement(condition, "action", attrib={"application": "bridge", "data": destinos})
+
 
 
 def _append_queue_routes(context: ET.Element, queues: list, record_all: bool = False) -> None:
@@ -469,8 +467,15 @@ def _append_custom_outbound_routes(context: ET.Element, outbound_routes: list | 
         cadena = orden_troncales(trunks, principal_id=principal_trunk.id if principal_trunk else None)
         if not cadena:
             continue
-        destinos = "|".join(f"sofia/gateway/{t.name}/${{destination_number}}" for t in cadena)
+        first_trunk = cadena[0]
+        cid = getattr(first_trunk, "caller_id_number", None) or first_trunk.username
+        if cid:
+            ET.SubElement(condition, "action", attrib={"application": "set", "data": f"effective_caller_id_number={cid}"})
+            ET.SubElement(condition, "action", attrib={"application": "set", "data": f"outbound_caller_id_number={cid}"})
+
+        destinos = "|".join(f"sofia/gateway/{t.name}/$1" if "(" in patron else f"sofia/gateway/{t.name}/${{destination_number}}" for t in cadena)
         ET.SubElement(condition, "action", attrib={"application": "bridge", "data": destinos})
+
 
 
 def build_dialplan_xml(

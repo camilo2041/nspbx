@@ -150,6 +150,7 @@ services:
       # estar detrás del proxy de Cloudflare (ver .env.example).
       TURN_HOST: ${TURN_HOST:-}
     volumes:
+      - ./backend/app:/app/app
       - ./freeswitch/conf:/freeswitch-conf
       - ./freeswitch/sounds:/freeswitch-sounds
       - ./freeswitch/recordings:/freeswitch-recordings

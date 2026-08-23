@@ -40,11 +40,14 @@ def write_gateway_file(trunk) -> Path:
     ]
     if trunk.username:
         lines.append(f'    <param name="username" value="{trunk.username}"/>')
+        lines.append(f'    <param name="from-user" value="{trunk.username}"/>')
     if trunk.password:
         lines.append(f'    <param name="password" value="{trunk.password}"/>')
-    if trunk.from_domain:
-        lines.append(f'    <param name="from-domain" value="{trunk.from_domain}"/>')
+    from_dom = trunk.from_domain or trunk.gateway_host
+    if from_dom:
+        lines.append(f'    <param name="from-domain" value="{from_dom}"/>')
     lines.append(f'    <param name="register" value="{"true" if should_register else "false"}"/>')
+    lines.append('    <param name="retry-seconds" value="30"/>')
     if transport != "udp":
         lines.append(f'    <param name="register-transport" value="{transport}"/>')
     ping = getattr(trunk, "ping", None)
@@ -59,6 +62,7 @@ def write_gateway_file(trunk) -> Path:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     logger.info("Gateway %s escrito en %s (register=%s)", trunk.name, path, should_register)
     return path
+
 
 
 def remove_gateway_file(trunk_name: str):
