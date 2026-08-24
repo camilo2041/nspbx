@@ -364,7 +364,20 @@ def _append_inbound_routes(public_context: ET.Element, routes: list) -> None:
     # ellas dependía de en qué orden las devolviera la consulta a la base,
     # que no tiene por qué coincidir con el orden que ve el admin en la
     # lista del panel (esa sí ya ordena por (priority, id)).
-    ordered = sorted((r for r in routes if r.enabled), key=lambda r: (r.priority, r.id))
+    #
+    # Además, el catch-all ("any"/"*"/vacío) se ordena SIEMPRE al final,
+    # sin importar prioridad ni id: un patrón genérico no debe poder
+    # comerse llamadas que matchean un DID específico. Antes pasaba: una
+    # ruta "any" con id menor que la de la cola interceptaba TODAS las
+    # llamadas entrantes, incluido el número de la cola, y quien llamaba
+    # escuchaba el voizbot en vez de entrar a la cola.
+    def _es_catchall(r):
+        return (r.did_pattern or "").strip().lower() in ("any", "*", "")
+
+    ordered = sorted(
+        (r for r in routes if r.enabled),
+        key=lambda r: (_es_catchall(r), r.priority, r.id),
+    )
     for route in ordered:
         pattern = route.did_pattern.strip()
         expression = ".*" if pattern.lower() in ("any", "*", "") else f"^{pattern}$"
