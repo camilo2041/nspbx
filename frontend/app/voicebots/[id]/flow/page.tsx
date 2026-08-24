@@ -1,7 +1,7 @@
 "use client";
 
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ReactFlow,
@@ -26,6 +26,10 @@ import { NodePanel } from "./NodePanel";
 let idCounter = 1;
 const newId = () => `n${Date.now()}_${idCounter++}`;
 
+const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+
+const snapshot = (nodes: Node[], edges: Edge[]) => JSON.stringify({ nodes, edges });
+
 export default function VoiceBotFlowPage() {
   const params = useParams();
   const router = useRouter();
@@ -40,6 +44,13 @@ export default function VoiceBotFlowPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedOk, setSavedOk] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  // Último estado que quedó persistido en el backend; comparándolo contra
+  // los nodos/edges actuales se sabe si hay cambios sin guardar.
+  const lastSavedRef = useRef("");
+  // Autosave con debounce para ediciones de datos (label, destino, prompt,
+  // etc.) — así no se pierde nada si el usuario navega sin darle a Guardar.
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -51,14 +62,18 @@ export default function VoiceBotFlowPage() {
         ]);
         setBot(b);
         setVoices(v);
-        setNodes(flow.nodes.length ? flow.nodes : [defaultStartNode()]);
-        setEdges(flow.edges as Edge[]);
+        const nodosIniciales = flow.nodes.length ? (flow.nodes as Node[]) : [defaultStartNode()];
+        const edgesIniciales = flow.edges as Edge[];
+        setNodes(nodosIniciales);
+        setEdges(edgesIniciales);
+        lastSavedRef.current = snapshot(nodosIniciales, edgesIniciales);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error al cargar el flujo");
       } finally {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botId]);
 
   const defaultStartNode = (): Node => ({
@@ -71,8 +86,12 @@ export default function VoiceBotFlowPage() {
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
   const onConnect = useCallback(
-    (conn: Connection) => setEdges((eds) => addEdge({ ...conn, id: `e${conn.source}_${conn.sourceHandle}_${conn.target}` }, eds)),
-    []
+    (conn: Connection) => {
+      const nextEdges = addEdge({ ...conn, id: `e${conn.source}_${conn.sourceHandle}_${conn.target}` }, edges);
+      setEdges(nextEdges);
+      scheduleSave(nodes, nextEdges);
+    },
+    [nodes, edges]
   );
 
   const addNode = (type: "menu" | "transfer" | "hangup" | "ai_agent") => {
@@ -80,25 +99,27 @@ export default function VoiceBotFlowPage() {
     const label =
       type === "menu" ? "Menú de audio" : type === "transfer" ? "Transferir" : type === "ai_agent" ? "Agente IA" : "Colgar";
     const data = type === "ai_agent" ? { label, prompt: "", tools: [], max_turns: 10, exits: [] } : { label };
-    setNodes((nds) => [
-      ...nds,
+    const next = [
+      ...nodes,
       { id, type, position: { x: 300 + Math.random() * 200, y: 100 + Math.random() * 300 }, data },
-    ]);
+    ];
+    setNodes(next);
+    scheduleSave(next, edges);
   };
 
   const selectedNode = nodes.find((n) => n.id === selectedId) as FlowNode | undefined;
 
+  // Ediciones de DATOS: las que cambian audio/voz/flags se guardan al
+  // instante (autoSave=true); el resto (label, destino, prompt, salidas) se
+  // autoguardan con un debounce para que navegar sin darle a "Guardar" no
+  // pierda nada. Las posiciones (arrastrar) NO autoguardan — eso lo cubre
+  // el indicador de "sin guardar" + aviso al salir.
   const updateSelectedData = (patch: Partial<FlowNode["data"]>, autoSave = false) => {
     if (!selectedId) return;
     const updated = nodes.map((n) => (n.id === selectedId ? { ...n, data: { ...n.data, ...patch } } : n));
     setNodes(updated);
-    // El audio/voz generado ya quedó guardado en disco del lado del backend
-    // apenas se genera, pero el flujo (qué nodo usa qué archivo) solo se
-    // persiste al guardar — si el usuario genera voz y no le da a "Guardar
-    // flujo" antes de salir, el cambio se pierde visualmente aunque el
-    // archivo exista. Se autoguarda al generar/subir audio para que "no
-    // guarda" deje de pasar.
     if (autoSave) persistFlow(updated, edges);
+    else scheduleSave(updated, edges);
   };
 
   // "Nodo inicial" y "Entrada de campaña" son de UN SOLO nodo a la vez —
@@ -119,9 +140,20 @@ export default function VoiceBotFlowPage() {
 
   const deleteSelected = () => {
     if (!selectedId) return;
-    setNodes((nds) => nds.filter((n) => n.id !== selectedId));
-    setEdges((eds) => eds.filter((e) => e.source !== selectedId && e.target !== selectedId));
+    const nextNodes = nodes.filter((n) => n.id !== selectedId);
+    const nextEdges = edges.filter((e) => e.source !== selectedId && e.target !== selectedId);
+    setNodes(nextNodes);
+    setEdges(nextEdges);
     setSelectedId(null);
+    scheduleSave(nextNodes, nextEdges);
+  };
+
+  const scheduleSave = (nodesToSave: Node[], edgesToSave: Edge[]) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      persistFlow(nodesToSave, edgesToSave);
+    }, 800);
   };
 
   const persistFlow = async (nodesToSave: Node[], edgesToSave: Edge[]) => {
@@ -133,6 +165,8 @@ export default function VoiceBotFlowPage() {
         nodes: nodesToSave.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
         edges: edgesToSave.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle })),
       });
+      lastSavedRef.current = snapshot(nodesToSave, edgesToSave);
+      setDirty(false);
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2500);
     } catch (e) {
@@ -142,7 +176,87 @@ export default function VoiceBotFlowPage() {
     }
   };
 
-  const save = () => persistFlow(nodes, edges);
+  const save = () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    persistFlow(nodes, edges);
+  };
+
+  // Indicador de "sin guardar": se marca en cuanto el estado difiere del
+  // último persistido (posiciones arrastradas, cambios en curso, etc.).
+  useEffect(() => {
+    if (loading) return;
+    setDirty(snapshot(nodes, edges) !== lastSavedRef.current);
+  }, [nodes, edges, loading]);
+
+  // Aviso del navegador al recargar/cerrar la pestaña con cambios sueltos.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+
+  // Al volver a la lista con cambios sin guardar, confirmar antes de irse.
+  const volverALista = () => {
+    if (dirty && !window.confirm("Hay cambios sin guardar en el flujo. ¿Salir de todos modos?")) return;
+    router.push("/voicebots");
+  };
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
+  // Problemas detectables del flujo que conviene avisar en pantalla: edges
+  // rotos, transferencias sin destino, teclas de menú inválidas, salidas de
+  // IA duplicadas o sin conexión. No bloquean el guardado — solo avisan.
+  const problemas: string[] = [];
+  const ids = new Set(nodes.map((n) => n.id));
+  for (const e of edges) {
+    if (!ids.has(e.source) || !ids.has(e.target)) {
+      problemas.push(`Conexión rota: ${e.source} → ${e.target}. Borrá el tramo y volvé a conectarlo.`);
+      continue;
+    }
+    const src = nodes.find((n) => n.id === e.source);
+    if (src?.type === "menu" && e.sourceHandle && !DIGITS.includes(e.sourceHandle)) {
+      problemas.push(`El menú "${src.data?.label || src.id}" tiene una tecla inválida: ${e.sourceHandle}.`);
+    }
+    if (src?.type === "ai_agent") {
+      const keys = ((src.data?.exits as { key: string }[]) || []).map((x) => x.key);
+      if (e.sourceHandle && !keys.includes(e.sourceHandle)) {
+        problemas.push(`El Agente IA "${src.data?.label || src.id}" tiene una salida sin configurar: ${e.sourceHandle}.`);
+      }
+    }
+  }
+  for (const n of nodes) {
+    if (n.type === "transfer") {
+      const d = (n.data || {}) as Record<string, unknown>;
+      const esCola = (d.target_type as string) === "queue";
+      const sinDestino = esCola ? !d.queue_id : !String(d.extension || "").trim();
+      if (sinDestino) {
+        problemas.push(`La transferencia "${n.data?.label || n.id}" no tiene destino configurado.`);
+      }
+    }
+    if (n.type === "ai_agent") {
+      const keys = ((n.data?.exits as { key: string }[]) || []).map((x) => x.key.trim());
+      const dups = keys.filter((k, i) => k && keys.indexOf(k) !== i);
+      if (dups.length > 0) {
+        problemas.push(`El Agente IA "${n.data?.label || n.id}" tiene salidas duplicadas: ${[...new Set(dups)].join(", ")}.`);
+      }
+    }
+  }
+
+  const copiarCodigo = () => {
+    navigator.clipboard?.writeText(`bot_${botId}`).catch(() => {});
+  };
 
   if (loading) return <Spinner />;
 
@@ -151,7 +265,7 @@ export default function VoiceBotFlowPage() {
       <div className="glass flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface/80 px-5 py-3">
         <div className="min-w-0">
           <button
-            onClick={() => router.push("/voicebots")}
+            onClick={volverALista}
             className="inline-flex items-center gap-1 text-xs text-muted transition-colors hover:text-brand-text"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3">
@@ -162,6 +276,18 @@ export default function VoiceBotFlowPage() {
           <h1 className="truncate text-lg font-bold tracking-tight text-fg">Flujo: {bot?.name}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11px] text-muted">
+            Prueba: marca
+            <span className="font-mono font-semibold text-fg-soft">bot_{botId}</span>
+            <button
+              type="button"
+              onClick={copiarCodigo}
+              aria-label="Copiar código de prueba"
+              className="rounded-md px-1 text-[10px] font-semibold text-brand-text transition-colors hover:bg-brand-soft"
+            >
+              copiar
+            </button>
+          </div>
           <Button variant="secondary" onClick={() => addNode("menu")}>
             + Menú de audio
           </Button>
@@ -174,6 +300,7 @@ export default function VoiceBotFlowPage() {
           <Button variant="secondary" onClick={() => addNode("hangup")}>
             + Colgar
           </Button>
+          {dirty && <span className="text-xs font-medium text-warn-text">● sin guardar</span>}
           <Button onClick={save} loading={saving}>
             {saving ? "Guardando..." : savedOk ? "Guardado ✓" : "Guardar flujo"}
           </Button>
@@ -183,6 +310,19 @@ export default function VoiceBotFlowPage() {
       {error && (
         <div className="px-5 pt-3">
           <ErrorBanner message={error} />
+        </div>
+      )}
+
+      {problemas.length > 0 && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-warn/30 bg-warn-soft/40 px-4 py-3 text-xs leading-relaxed text-warn-text">
+            <span className="mb-1 block font-semibold">Revisá estos puntos antes de probar la llamada:</span>
+            <ul className="list-inside list-disc space-y-0.5">
+              {problemas.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 

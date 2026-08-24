@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppLayout } from "@/components/layout";
 import { Button, Card, Modal, PageHeader } from "@/components/ui";
-import { apiFetch } from "@/lib/api";
+import { api } from "@/lib/api";
 import { BlacklistNumber } from "@/lib/types";
 
 export default function BlacklistPage() {
@@ -21,7 +20,7 @@ export default function BlacklistPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<BlacklistNumber[]>("/api/blacklist");
+      const data = await api.get<BlacklistNumber[]>("/api/blacklist");
       setItems(data);
     } catch (err: any) {
       setError(err.message || "Error al cargar la lista negra");
@@ -44,10 +43,7 @@ export default function BlacklistPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      await apiFetch("/api/blacklist", {
-        method: "POST",
-        body: JSON.stringify({ phone, note: note || null }),
-      });
+      await api.post("/api/blacklist", { phone, note: note || null });
       setShowModal(false);
       await cargarLista();
     } catch (err: any) {
@@ -60,7 +56,7 @@ export default function BlacklistPage() {
   const eliminar = async (id: number) => {
     if (!confirm("¿Seguro de remover este número de la lista negra?")) return;
     try {
-      await apiFetch(`/api/blacklist/${id}`, { method: "DELETE" });
+      await api.del(`/api/blacklist/${id}`);
       await cargarLista();
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -68,13 +64,12 @@ export default function BlacklistPage() {
   };
 
   return (
-    <AppLayout>
+    <>
       <PageHeader
         title="Lista Negra Anti-Spam"
         subtitle="Bloqueo automático de llamadas entrantes por número o prefijo no deseado."
-      >
-        <Button onClick={abrirModal}>+ Bloquear Número</Button>
-      </PageHeader>
+        actions={<Button onClick={abrirModal}>+ Bloquear Número</Button>}
+      />
 
       {error && (
         <Card className="mb-6 border-red-500/20 bg-red-500/10 p-4 text-red-400">
@@ -123,7 +118,7 @@ export default function BlacklistPage() {
 
       {showModal && (
         <Modal
-          isOpen={showModal}
+          open={showModal}
           onClose={() => setShowModal(false)}
           title="Bloquear Número en Lista Negra"
         >
@@ -166,6 +161,6 @@ export default function BlacklistPage() {
           </form>
         </Modal>
       )}
-    </AppLayout>
+    </>
   );
 }

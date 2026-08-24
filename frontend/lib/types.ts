@@ -397,6 +397,10 @@ export interface MiEntorno {
   sip_server_ip: string | null;
   sip_server_port: number | null;
   // STUN siempre; TURN solo si está configurado en el servidor. Las
+  // credenciales llevan firma con vencimiento, ver app/services/turn.py.
+  ice_servers: { urls: string[]; username?: string; credential?: string }[];
+}
+
 export interface OutboundRoute {
   id: number;
   name: string;

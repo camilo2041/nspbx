@@ -109,37 +109,16 @@
 
     <!-- Necesario en Docker: el NAT del propio Docker hace que las llamadas
          externas (softphone del navegador) lleguen con IP de origen privada
-         (la gateway del bridge de Docker), por lo que la detección normal de
-         NAT de FreeSWITCH las trata como "locales" y nunca sustituye
-         rtp-ip/sip-ip por ext-rtp-ip/ext-sip-ip en el SDP -> sin audio.
-         Forzar esto asegura que siempre se anuncie la IP externa. -->
+         (la gateway del bridge de Docker, p.ej. 172.19.0.1), por lo que la
+         detección normal de NAT de FreeSWITCH las trata como "locales" y
+         nunca sustituye rtp-ip/sip-ip por ext-rtp-ip/ext-sip-ip en el
+         SDP/ICE -> sin audio (el navegador recibe candidatos con la IP
+         interna del contenedor, que no puede alcanzar).
+         Con never_local TODO se trata como externo y se anuncia la IP
+         externa (webrtc_ext_ip en vars.xml). -->
     <param name="aggressive-nat-detection" value="true"/>
-    <!--
-        There are known issues (asserts and segfaults) when 100rel is enabled.
-        It is not recommended to enable 100rel at this time.
-    -->
-    <!--<param name="enable-100rel" value="true"/>-->
-
-    <!-- uncomment if you don't wish to try a next SRV destination on 503 response -->
-    <!-- RFC3263 Section 4.3 -->
-    <!--<param name="disable-srv503" value="true"/>-->
-
-    <!-- Enable Compact SIP headers. -->
-    <!--<param name="enable-compact-headers" value="true"/>-->
-    <!--
-        enable/disable session timers
-    -->
-    <!--<param name="enable-timer" value="false"/>-->
-    <!--<param name="minimum-session-expires" value="120"/>-->
-    <param name="apply-inbound-acl" value="domains"/>
-    <!--
-        This defines your local network, by default we detect your local network
-        and create this localnet.auto ACL for this.
-    -->
-    <!-- localnet.auto trataría la IP del gateway de Docker (172.23.0.x) como
-         "red local" y nunca anunciaría ext-rtp-ip en el SDP/ICE -> sin audio.
-         Forzamos never_local para que TODO se trate como externo. -->
     <param name="local-network-acl" value="never_local"/>
+
     <!--<param name="apply-register-acl" value="domains"/>-->
     <!--<param name="dtmf-type" value="info"/>-->
 

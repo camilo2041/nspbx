@@ -463,30 +463,41 @@ export function NodePanel({
                 </p>
               )}
               <div className="space-y-2">
-                {aiExits.map((exit, i) => (
-                  <div key={i} className="flex items-start gap-1.5 rounded-lg bg-surface px-2 py-1.5">
-                    <span className="mt-1.5 text-[11px] text-violet-text">→</span>
-                    <div className="flex-1 space-y-1">
-                      <input
-                        value={exit.key}
-                        onChange={(e) => updateAiExit(i, { key: e.target.value.trim() })}
-                        placeholder="clave (ej. quiere_agente)"
-                        className={`${fieldClass} px-2 py-1 font-mono text-[11px]`}
-                      />
-                      <input
-                        value={exit.label}
-                        onChange={(e) => updateAiExit(i, { label: e.target.value })}
-                        placeholder="Descripción para el modelo"
-                        className={`${fieldClass} px-2 py-1 text-[11px]`}
-                      />
-                    </div>
-                    <IconButton label="Quitar salida" onClick={() => removeAiExit(i)} className="mt-0.5 h-7 w-7">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
-                        <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                      </svg>
-                    </IconButton>
+              {aiExits.map((exit, i) => (
+                <div key={i} className="flex items-start gap-1.5 rounded-lg bg-surface px-2 py-1.5">
+                  <span className="mt-1.5 text-[11px] text-violet-text">→</span>
+                  <div className="flex-1 space-y-1">
+                    <input
+                      value={exit.key}
+                      onChange={(e) => updateAiExit(i, { key: e.target.value.trim() })}
+                      placeholder="clave (ej. quiere_agente)"
+                      className={`${fieldClass} px-2 py-1 font-mono text-[11px]`}
+                    />
+                    <input
+                      value={exit.label}
+                      onChange={(e) => updateAiExit(i, { label: e.target.value })}
+                      placeholder="Descripción para el modelo"
+                      className={`${fieldClass} px-2 py-1 text-[11px]`}
+                    />
                   </div>
-                ))}
+                  <IconButton label="Quitar salida" onClick={() => removeAiExit(i)} className="mt-0.5 h-7 w-7">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+                      <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </IconButton>
+                </div>
+              ))}
+              {(() => {
+                const keys = aiExits.map((e) => e.key.trim());
+                const dups = [...new Set(keys.filter((k, i) => k && keys.indexOf(k) !== i))];
+                if (dups.length === 0) return null;
+                return (
+                  <Note tone="warn">
+                    Claves de salida duplicadas: <span className="font-mono">{dups.join(", ")}</span>. Cada salida
+                    necesita una clave única para que sus conexiones no se pisen.
+                  </Note>
+                );
+              })()}
               </div>
               <p className="mt-2 text-[11px] text-muted">
                 Conectá cada salida (arrastrando desde el nodo) al siguiente paso del flujo — otro Agente IA, un menú, o

@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppLayout } from "@/components/layout";
 import { Badge, Button, Card, Modal, PageHeader } from "@/components/ui";
-import { apiFetch } from "@/lib/api";
+import { api } from "@/lib/api";
 import { OutboundRoute, Trunk } from "@/lib/types";
 
 export default function OutboundRoutesPage() {
@@ -24,10 +23,10 @@ export default function OutboundRoutesPage() {
   const cargarDatos = async () => {
     setLoading(true);
     setError(null);
-    try:
+    try {
       const [rData, tData] = await Promise.all([
-        apiFetch<OutboundRoute[]>("/api/outbound-routes"),
-        apiFetch<Trunk[]>("/api/trunks"),
+        api.get<OutboundRoute[]>("/api/outbound-routes"),
+        api.get<Trunk[]>("/api/trunks"),
       ]);
       setRoutes(rData);
       setTrunks(tData);
@@ -71,15 +70,9 @@ export default function OutboundRoutesPage() {
         priority: Number(formPriority),
       };
       if (editing) {
-        await apiFetch(`/api/outbound-routes/${editing.id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
+        await api.put(`/api/outbound-routes/${editing.id}`, payload);
       } else {
-        await apiFetch("/api/outbound-routes", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+        await api.post("/api/outbound-routes", payload);
       }
       setShowModal(false);
       await cargarDatos();
@@ -92,10 +85,7 @@ export default function OutboundRoutesPage() {
 
   const toggleEnabled = async (route: OutboundRoute) => {
     try {
-      await apiFetch(`/api/outbound-routes/${route.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ enabled: !route.enabled }),
-      });
+      await api.put(`/api/outbound-routes/${route.id}`, { enabled: !route.enabled });
       await cargarDatos();
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -105,7 +95,7 @@ export default function OutboundRoutesPage() {
   const eliminar = async (id: number) => {
     if (!confirm("¿Seguro de eliminar esta ruta saliente?")) return;
     try {
-      await apiFetch(`/api/outbound-routes/${id}`, { method: "DELETE" });
+      await api.del(`/api/outbound-routes/${id}`);
       await cargarDatos();
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -113,13 +103,12 @@ export default function OutboundRoutesPage() {
   };
 
   return (
-    <AppLayout>
+    <>
       <PageHeader
         title="Rutas Salientes"
         subtitle="Reglas de marcado, patrones de números y preferencia de troncales de salida."
-      >
-        <Button onClick={abrirCrear}>+ Nueva Ruta Saliente</Button>
-      </PageHeader>
+        actions={<Button onClick={abrirCrear}>+ Nueva Ruta Saliente</Button>}
+      />
 
       {error && (
         <Card className="mb-6 border-red-500/20 bg-red-500/10 p-4 text-red-400">
@@ -164,7 +153,7 @@ export default function OutboundRoutesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <button onClick={() => toggleEnabled(r)}>
-                          <Badge variant={r.enabled ? "success" : "neutral"}>
+                          <Badge color={r.enabled ? "green" : "slate"}>
                             {r.enabled ? "Activa" : "Inactiva"}
                           </Badge>
                         </button>
@@ -188,7 +177,7 @@ export default function OutboundRoutesPage() {
 
       {showModal && (
         <Modal
-          isOpen={showModal}
+          open={showModal}
           onClose={() => setShowModal(false)}
           title={editing ? "Editar Ruta Saliente" : "Nueva Ruta Saliente"}
         >
@@ -262,6 +251,6 @@ export default function OutboundRoutesPage() {
           </form>
         </Modal>
       )}
-    </AppLayout>
+    </>
   );
 }

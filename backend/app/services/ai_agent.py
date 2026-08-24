@@ -536,16 +536,30 @@ async def _saltar_a_nodo(session: ESLOutboundSession, bot_id: str, node_id: str)
     (ver flow_engine._build_ai_agent_context) vuelve a hacer `socket`, así
     que FreeSWITCH abre una sesión ESL outbound NUEVA e independiente para
     él: handle_call se invoca de nuevo para el mismo call_id, con su
-    propio prompt/mensajes desde cero. Mecanismo nuevo, sin probar todavía
-    contra una llamada real — confirmarlo antes de confiar en él para
-    tráfico de producción."""
+    propio prompt/mensajes desde cero.
+    """
     uid = session.channel_vars.get("unique-id", "")
     try:
         await session.api(f"uuid_audio_fork {uid} stop voizbot")
     except Exception:
         pass
     context_name = f"bot_{bot_id}_n{node_id}"
-    await session.execute("transfer", f"{context_name} XML {context_name}")
+    # `transfer` (sin "go", igual que el que usan los menús) entrega el
+    # canal al contexto destino; el app completa apenas se hace el handoff,
+    # así que `execute` no se queda colgado esperando al contexto nuevo.
+    try:
+        await session.execute("transfer", f"{context_name} XML {context_name}", timeout=15.0)
+    except Exception:
+        # Si el salto falla (p. ej. el nodo destino ya no existe en el
+        # dialplan), la llamada no puede seguir: se cuelga limpio y se
+        # loguea para que salte en la supervisión. El `raise` deja que
+        # handle_call registre el resultado como error.
+        logger.warning("Voizbot IA: avanzar_flujo no pudo saltar a %s, colgando", context_name)
+        try:
+            await session.execute("hangup", "NORMAL_CLEARING")
+        except Exception:
+            pass
+        raise
 
 
 @router.websocket("/ws/voicebot/{call_id}")

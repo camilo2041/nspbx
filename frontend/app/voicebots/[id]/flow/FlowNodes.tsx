@@ -63,10 +63,18 @@ export function MenuNodeView({ data, selected }: { data: FlowNodeData; selected?
             className="relative flex h-6 items-center justify-center rounded-md bg-surface-3 font-mono text-[10px] text-fg-soft"
           >
             {d}
-            <Handle type="source" position={Position.Right} id={d} style={{ top: "50%", background: "#6366f1" }} />
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={d}
+              style={{ top: "50%", right: "-7px", background: "#6366f1" }}
+            />
           </div>
         ))}
       </div>
+      <p className="mt-1.5 text-[10px] leading-snug text-faint">
+        Conectá cada tecla desde su puntito hacia el siguiente nodo.
+      </p>
     </NodeShell>
   );
 }

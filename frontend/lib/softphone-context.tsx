@@ -101,6 +101,7 @@ export function useSoftphone() {
 class Ringer {
   private ctx: AudioContext | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private ringbackTimer: ReturnType<typeof setInterval> | null = null;
 
   unlock() {
     if (this.ctx) return;
@@ -164,6 +165,29 @@ class Ringer {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+  }
+
+  // Ringback de llamada saliente: mismos 440/480 Hz del timbre de entrada
+  // pero con el patrón largo de "está llamando" (2s de tono, 4s de
+  // silencio — el ca-ring de FreeSWITCH). Se corta apenas llega audio
+  // real del otro lado (early media del proveedor o que contesten), que
+  // es lo que hace `ringbackOff` desde attachWhenReady y el efecto de
+  // phase cuando pasa a "in-call".
+  ringbackOn() {
+    if (!this.ctx) this.unlock();
+    if (!this.ctx || this.ringbackTimer) return;
+    if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
+    this.tono(this.ctx.currentTime, 2.0);
+    this.ringbackTimer = setInterval(() => {
+      if (this.ctx) this.tono(this.ctx.currentTime, 2.0);
+    }, 6000);
+  }
+
+  ringbackOff() {
+    if (this.ringbackTimer) {
+      clearInterval(this.ringbackTimer);
+      this.ringbackTimer = null;
     }
   }
 }
@@ -233,8 +257,11 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
         document.title = visible ? "📞 Llamada entrante…" : tituloOriginalRef.current;
         visible = !visible;
       }, 900);
+    } else if (phase === "outgoing") {
+      ringerRef.current?.ringbackOn();
     } else {
       ringerRef.current?.stop();
+      ringerRef.current?.ringbackOff();
       if (parpadeoRef.current) {
         clearInterval(parpadeoRef.current);
         parpadeoRef.current = null;
@@ -244,6 +271,8 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
       }
     }
     return () => {
+      ringerRef.current?.stop();
+      ringerRef.current?.ringbackOff();
       if (parpadeoRef.current) {
         clearInterval(parpadeoRef.current);
         parpadeoRef.current = null;
@@ -287,7 +316,13 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
       const sdh = session.sessionDescriptionHandler as unknown as SdhLike | undefined;
       const pc = sdh?.peerConnection;
       if (pc) {
-        pc.addEventListener("track", () => attachRemoteAudio(session));
+        pc.addEventListener("track", () => {
+          // Llegó audio real del otro lado (early media del proveedor, que
+          // manda su propio "está sonando", o ya contestó): el ringback
+          // sintetizado sobra y se apaga para no duplicar el tono.
+          ringerRef.current?.ringbackOff();
+          attachRemoteAudio(session);
+        });
         attachRemoteAudio(session);
       } else if (session.state !== SessionState.Terminated) {
         setTimeout(attachWhenReady, 150);

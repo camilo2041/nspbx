@@ -44,6 +44,42 @@ curl http://localhost:3005                 # frontend OK
 > Requisito: Docker Desktop con RAM suficiente (si hay muchos proyectos activos, detenerlos o
 > subir la memoria asignada). Si el engine no levanta: cerrar Docker Desktop y relanzar.
 
+## Despliegue a producción
+
+El stack se engancha al Traefik ya existente del servidor (Dokploy) vía la red externa
+`traefik-public` — el compose NO trae su propio Traefik.
+
+```bash
+# 1) En el servidor, desde el repo
+git pull
+
+# 2) SOLO la primera vez: genera .env, secretos y vars.xml con la IP pública detectada
+bash scripts/setup.sh
+
+# 3) Si vars.xml ya existía (instalación previa), VERIFICAR que anuncie la IP correcta:
+grep -E 'webrtc_ext_ip|external_rtp_ip|external_sip_ip' freeswitch/conf/vars.xml
+#    Deben apuntar a la IP pública del servidor. "auto-nat" no resuelve dentro del
+#    contenedor y deja el softphone MUDO (anuncia la IP interna de Docker).
+
+# 4) Rutas del Traefik existente (reemplazar por los dominios reales):
+#    sed -e 's/PBX_HOST/tu.dominio.com/g' -e 's/TURN_HOST/turn.tu.dominio.com/g' \
+#      deploy/traefik-dynamic.yml.example > /etc/dokploy/traefik/dynamic/nspbx.yml
+
+# 5) Levantar todo (--profile turn incluye el relay coturn; si no usás TURN,
+#    quitá ese flag y dejá TURN_SECRET vacío en .env)
+docker compose --profile turn up -d --build
+```
+
+Requisitos de red ya contemplados por `setup.sh`: DNS de `PBX_HOST` → IP pública (nube GRIS en
+Cloudflare), DNS de `TURN_HOST` → IP pública (obligatorio nube GRIS, distinto de PBX_HOST), y
+puertos abiertos `80`, `443`, `5060` (TCP+UDP) y `16384-16584/UDP`.
+
+El softphone del navegador usa el WebSocket de señalización (`/sip`) y el relay TURN a través del
+mismo 443 de Traefik; el audio (RTP) va directo por UDP al rango `16384-16584` o por el relay si
+el puerto UDP está cerrado. En **Ajustes → SIP**, `sip_ws_url` debería quedar en
+`wss://PBX_HOST/sip`; si quedó con `localhost`, el softphone lo deduce solo cuando el panel se
+sirve por HTTPS (ver `resolverServidorSip` en `frontend/lib/softphone-context.tsx`).
+
 ## Usuarios y acceso
 
 El panel exige iniciar sesión. En el primer arranque, si la tabla de usuarios está vacía, el backend

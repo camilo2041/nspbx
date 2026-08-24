@@ -65,6 +65,7 @@ export default function VoicebotsPage() {
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [modalError, setModalError] = useState("");
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<VoiceBot | null>(null);
   const [form, setForm] = useState(empty);
@@ -101,7 +102,7 @@ export default function VoicebotsPage() {
         setVoices(vs);
         setTtsVoice(vs[0]?.id || "");
       })
-      .catch(() => setError("No se pudieron cargar las voces de ElevenLabs — revisa la API key en Ajustes"));
+      .catch(() => setModalError("No se pudieron cargar las voces de ElevenLabs — revisa la API key en Ajustes"));
   }, [ttsProvider]);
 
   const load = useCallback(async () => {
@@ -130,6 +131,10 @@ export default function VoicebotsPage() {
     setForm(empty);
     setMenuRows([]);
     setSelectedTemplate("ia_citas");
+    setError("");
+    setModalError("");
+    setTtsText("");
+    setTtsProvider("edge");
     setModal(true);
   };
 
@@ -137,6 +142,10 @@ export default function VoicebotsPage() {
     setEditing(bot);
     setForm({ ...bot });
     setMenuRows(parseMenu(bot.config));
+    setError("");
+    setModalError("");
+    setTtsText("");
+    setTtsProvider("edge");
     setModal(true);
   };
 
@@ -147,9 +156,13 @@ export default function VoicebotsPage() {
 
   const save = async () => {
     try {
+      // Un bot con flujo visual (flow_json) NO usa el menú legado ni el
+      // saludo de nivel-bot: eso vive en el editor de flujo. Guardar acá
+      // el config del menú legado no tendría efecto y confundiría.
+      const esFlujo = !!editing?.flow_json;
       const payload = {
         ...form,
-        config: menuRows.length ? serializeMenu(menuRows) : null,
+        config: esFlujo ? (editing?.config ?? null) : menuRows.length ? serializeMenu(menuRows) : null,
         welcome_message: form.welcome_message || null,
       };
       if (editing) {
@@ -163,21 +176,22 @@ export default function VoicebotsPage() {
       }
       await closeModal();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error al guardar");
+      setModalError(e instanceof Error ? e.message : "Error al guardar");
     }
   };
 
   const createFromTemplate = async () => {
     if (!form.name.trim()) {
-      setError("Ponele un nombre al voizbot");
+      setModalError("Ponele un nombre al voizbot");
       return;
     }
     setCreating(true);
-    setError("");
+    setModalError("");
     try {
+      const esIA = selectedTemplate === "ia_citas" || selectedTemplate === "ia_asesor";
       const created = await api.post<VoiceBot>("/api/voicebots", {
         name: form.name,
-        bot_type: "ivr",
+        bot_type: esIA ? "ai" : "ivr",
         welcome_message: null,
         config: null,
         enabled: true,
@@ -187,7 +201,7 @@ export default function VoicebotsPage() {
       setModal(false);
       router.push(`/voicebots/${created.id}/flow`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error al crear el voizbot");
+      setModalError(e instanceof Error ? e.message : "Error al crear el voizbot");
     } finally {
       setCreating(false);
     }
@@ -222,9 +236,9 @@ export default function VoicebotsPage() {
       const updated = await api.upload<VoiceBot>(`/api/voicebots/${editing.id}/greeting`, file);
       setEditing(updated);
       setForm({ ...updated });
-      setError("");
+      setModalError("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error al subir el audio");
+      setModalError(e instanceof Error ? e.message : "Error al subir el audio");
     } finally {
       setUploading(false);
     }
@@ -241,9 +255,9 @@ export default function VoicebotsPage() {
       });
       setEditing(updated);
       setForm({ ...updated });
-      setError("");
+      setModalError("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error al generar el audio");
+      setModalError(e instanceof Error ? e.message : "Error al generar el audio");
     } finally {
       setGenerating(false);
     }
@@ -256,7 +270,7 @@ export default function VoicebotsPage() {
       setEditing(updated);
       setForm({ ...updated });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error al quitar el audio");
+      setModalError(e instanceof Error ? e.message : "Error al quitar el audio");
     }
   };
 
@@ -317,7 +331,7 @@ export default function VoicebotsPage() {
                     Marca <span className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-fg-soft">bot_{bot.id}</span>{" "}
                     desde una extensión para probarlo
                   </p>
-                  {bot.welcome_message && (
+                  {bot.welcome_message && !bot.flow_json && (
                     <p className="mt-1.5 line-clamp-2 text-xs italic text-faint">&ldquo;{bot.welcome_message}&rdquo;</p>
                   )}
                 </div>
@@ -331,14 +345,14 @@ export default function VoicebotsPage() {
                       Inactivo
                     </Badge>
                   )}
-                  {bot.greeting_audio_path && <Badge color="blue">Audio propio</Badge>}
+                  {bot.greeting_audio_path && !bot.flow_json && <Badge color="blue">Audio propio</Badge>}
                 </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
                 <Button onClick={() => router.push(`/voicebots/${bot.id}/flow`)}>Editar flujo</Button>
                 <Button variant="secondary" onClick={() => openEdit(bot)}>
-                  Editar
+                  Configurar
                 </Button>
                 <Button variant="danger" onClick={() => remove(bot)}>
                   Eliminar
@@ -374,9 +388,9 @@ export default function VoicebotsPage() {
           )
         }
       >
-        {error && (
+        {modalError && (
           <div className="mb-4">
-            <ErrorBanner message={error} onClose={() => setError("")} />
+            <ErrorBanner message={modalError} onClose={() => setModalError("")} />
           </div>
         )}
 
@@ -438,11 +452,23 @@ export default function VoicebotsPage() {
               onChange={(v) => setForm({ ...form, bot_type: v })}
               options={[
                 { value: "ivr", label: "IVR (menú DTMF)" },
-                { value: "ai", label: "IA (próximamente)", disabled: true, title: "Motor de IA aún no disponible" },
+                { value: "ai", label: "IA (flujo conversacional)" },
               ]}
             />
+            <p className="mt-1.5 text-[11px] text-faint">
+              El tipo es solo una etiqueta de la lista: el comportamiento real lo define el flujo (nodos de menú o
+              Agente IA) en el editor de flujo.
+            </p>
           </div>
 
+          {editing.flow_json ? (
+            <Note tone="info">
+              Este voizbot usa el editor de flujo: el saludo, el audio y el menú se configuran en{" "}
+              <strong className="text-fg-soft">Editar flujo</strong>, no acá. Acá solo se cambia el nombre y si está
+              habilitado.
+            </Note>
+          ) : (
+          <div className="space-y-4">
           <div>
             <span className="mb-1.5 block text-xs font-medium text-fg-soft">Audio de saludo (WAV o MP3)</span>
             {editing ? (
@@ -577,6 +603,8 @@ export default function VoicebotsPage() {
               </div>
             )}
           </div>
+          </div>
+          )}
 
           <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-2.5">
             <span className="text-sm text-fg-soft">Habilitado</span>

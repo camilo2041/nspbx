@@ -672,32 +672,33 @@ export default function CallsPage() {
       <PageHeader
         title="Llamadas"
         subtitle="Historial CDR y monitoreo en vivo estilo Vicidial"
-      >
-        <div className="flex space-x-2">
-          <button
-            type="button"
-            onClick={() => setVista("historial")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              vista === "historial"
-                ? "bg-amber-500 text-zinc-950 font-bold shadow"
-                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-            }`}
-          >
-            📋 Historial (CDR)
-          </button>
-          <button
-            type="button"
-            onClick={() => setVista("en_vivo")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              vista === "en_vivo"
-                ? "bg-amber-500 text-zinc-950 font-bold shadow"
-                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-            }`}
-          >
-            🎧 Llamadas en Vivo (Supervisión)
-          </button>
-        </div>
-      </PageHeader>
+        actions={
+          <div className="flex space-x-2">
+            <button
+              type="button"
+              onClick={() => setVista("historial")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                vista === "historial"
+                  ? "bg-amber-500 text-zinc-950 font-bold shadow"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              }`}
+            >
+              📋 Historial (CDR)
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista("en_vivo")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                vista === "en_vivo"
+                  ? "bg-amber-500 text-zinc-950 font-bold shadow"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              }`}
+            >
+              🎧 Llamadas en Vivo (Supervisión)
+            </button>
+          </div>
+        }
+      />
 
       {error && (
         <div className="mb-4">

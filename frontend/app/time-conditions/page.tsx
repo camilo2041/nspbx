@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppLayout } from "@/components/layout";
 import { Badge, Button, Card, Modal, PageHeader } from "@/components/ui";
-import { apiFetch } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Extension, Queue, TimeCondition, TimeGroup, VoiceBot } from "@/lib/types";
 
 export default function TimeConditionsPage() {
@@ -39,11 +38,11 @@ export default function TimeConditionsPage() {
     setError(null);
     try {
       const [gData, cData, eData, qData, bData] = await Promise.all([
-        apiFetch<TimeGroup[]>("/api/time-conditions/groups"),
-        apiFetch<TimeCondition[]>("/api/time-conditions"),
-        apiFetch<Extension[]>("/api/extensions"),
-        apiFetch<Queue[]>("/api/queues"),
-        apiFetch<VoiceBot[]>("/api/voicebots"),
+        api.get<TimeGroup[]>("/api/time-conditions/groups"),
+        api.get<TimeCondition[]>("/api/time-conditions"),
+        api.get<Extension[]>("/api/extensions"),
+        api.get<Queue[]>("/api/queues"),
+        api.get<VoiceBot[]>("/api/voicebots"),
       ]);
       setTimeGroups(gData);
       setConditions(cData);
@@ -75,15 +74,9 @@ export default function TimeConditionsPage() {
     try {
       const payload = { name: groupName, schedule_json: groupSchedule };
       if (editingGroup) {
-        await apiFetch(`/api/time-conditions/groups/${editingGroup.id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
+        await api.put(`/api/time-conditions/groups/${editingGroup.id}`, payload);
       } else {
-        await apiFetch("/api/time-conditions/groups", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+        await api.post("/api/time-conditions/groups", payload);
       }
       setShowGroupModal(false);
       await cargarDatos();
@@ -119,15 +112,9 @@ export default function TimeConditionsPage() {
         nomatch_destination_value: noMatchVal,
       };
       if (editingCond) {
-        await apiFetch(`/api/time-conditions/${editingCond.id}`, {
-          method: "PUT",
-          body: JSON.stringify(payload),
-        });
+        await api.put(`/api/time-conditions/${editingCond.id}`, payload);
       } else {
-        await apiFetch("/api/time-conditions", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+        await api.post("/api/time-conditions", payload);
       }
       setShowCondModal(false);
       await cargarDatos();
@@ -139,18 +126,19 @@ export default function TimeConditionsPage() {
   };
 
   return (
-    <AppLayout>
+    <>
       <PageHeader
         title="Horarios y Condiciones de Tiempo"
         subtitle="Configuración de horarios laborales, días festivos y derivación dinámica de llamadas entrantes."
-      >
-        <div className="space-x-2">
-          <Button variant="ghost" onClick={abrirCrearGrupo}>
-            + Grupo de Horarios
-          </Button>
-          <Button onClick={abrirCrearCondicion}>+ Condición de Tiempo</Button>
-        </div>
-      </PageHeader>
+        actions={
+          <div className="space-x-2">
+            <Button variant="ghost" onClick={abrirCrearGrupo}>
+              + Grupo de Horarios
+            </Button>
+            <Button onClick={abrirCrearCondicion}>+ Condición de Tiempo</Button>
+          </div>
+        }
+      />
 
       {error && (
         <Card className="mb-6 border-red-500/20 bg-red-500/10 p-4 text-red-400">
@@ -199,7 +187,7 @@ export default function TimeConditionsPage() {
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-semibold text-white">{c.name}</span>
-                      <Badge variant="info">{group?.name || "Sin Grupo"}</Badge>
+                      <Badge color="blue">{group?.name || "Sin Grupo"}</Badge>
                     </div>
                     <div className="text-xs space-y-1">
                       <div className="text-emerald-400">
@@ -220,7 +208,7 @@ export default function TimeConditionsPage() {
       {/* Modal Grupo de Horarios */}
       {showGroupModal && (
         <Modal
-          isOpen={showGroupModal}
+          open={showGroupModal}
           onClose={() => setShowGroupModal(false)}
           title="Grupo de Horarios"
         >
@@ -261,7 +249,7 @@ export default function TimeConditionsPage() {
       {/* Modal Condicion de Tiempo */}
       {showCondModal && (
         <Modal
-          isOpen={showCondModal}
+          open={showCondModal}
           onClose={() => setShowCondModal(false)}
           title="Nueva Condición de Tiempo"
         >
@@ -356,6 +344,6 @@ export default function TimeConditionsPage() {
           </form>
         </Modal>
       )}
-    </AppLayout>
+    </>
   );
 }
