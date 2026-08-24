@@ -426,6 +426,14 @@ class QueueUpdate(BaseModel):
     enabled: Optional[bool] = None
 
 
+class QueueTtsRequest(BaseModel):
+    """Generación por voz sintética del anuncio de entrada de una cola."""
+
+    text: str
+    voice: str = "es-CO-SalomeNeural"
+    provider: str = Field(default="edge", pattern="^(edge|elevenlabs|deepgram)$")
+
+
 class QueueOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -442,6 +450,8 @@ class QueueOut(BaseModel):
     wrap_up_time: int
     record: bool
     failover_extension: Optional[str] = None
+    announce_audio_path: Optional[str] = None
+    announce_tts_text: Optional[str] = None
     announce_position: bool
     enabled: bool
     created_at: datetime

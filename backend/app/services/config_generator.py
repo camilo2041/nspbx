@@ -329,6 +329,11 @@ def _append_queue_routes(context: ET.Element, queues: list, record_all: bool = F
         ET.SubElement(condition, "action", attrib={"application": "answer"})
         if queue.record and not record_all:
             append_record_actions(condition)
+        # Anuncio de entrada configurable (archivo o TTS, ver api/queues.py):
+        # se reproduce UNA vez apenas contesta, antes de entrar a la cola y
+        # que arranque la música de espera. Si no hay anuncio, entra directo.
+        if queue.announce_audio_path:
+            ET.SubElement(condition, "action", attrib={"application": "playback", "data": queue.announce_audio_path})
         ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=false"})
         ET.SubElement(condition, "action", attrib={"application": "callcenter", "data": f"{queue.name}@$${{domain}}"})
         if queue.failover_extension:

@@ -58,3 +58,27 @@ def save_greeting(bot_id: int, filename: str, content: bytes) -> str:
 
 def remove_greeting(bot_id: int) -> None:
     remove_audio(bot_id)
+
+
+# Anuncio de entrada de una COLA (no de un bot) — ver _append_queue_routes
+# en config_generator.py y app/api/queues.py.
+def save_queue_announce(queue_id: int, filename: str, content: bytes) -> str:
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValueError("Formato no soportado: usa .wav o .mp3")
+    key = f"queue_{queue_id}_announce"
+    local_path = _local_bots_dir() / f"{key}{ext}"
+    for other_ext in ALLOWED_EXTENSIONS - {ext}:
+        stale = _local_bots_dir() / f"{key}{other_ext}"
+        if stale.exists():
+            stale.unlink()
+    local_path.write_bytes(content)
+    return f"{FS_SIDE_SOUNDS_DIR}/{BOTS_DIR}/{key}{ext}"
+
+
+def remove_queue_announce(queue_id: int) -> None:
+    key = f"queue_{queue_id}_announce"
+    for ext in ALLOWED_EXTENSIONS:
+        local_path = _local_bots_dir() / f"{key}{ext}"
+        if local_path.exists():
+            local_path.unlink()

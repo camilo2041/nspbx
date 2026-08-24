@@ -189,6 +189,8 @@ export interface Queue {
   wrap_up_time: number;
   record: boolean;
   failover_extension: string | null;
+  announce_audio_path: string | null;
+  announce_tts_text: string | null;
   announce_position: boolean;
   enabled: boolean;
   created_at: string;

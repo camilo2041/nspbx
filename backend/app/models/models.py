@@ -349,6 +349,12 @@ class Queue(Base):
     wrap_up_time: Mapped[int] = mapped_column(Integer, default=10)  # pausa del agente tras colgar
     record: Mapped[bool] = mapped_column(Boolean, default=False)
     failover_extension: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Anuncio de entrada: lo que se le reproduce al que llama apenas entra a
+    # la cola, ANTES de la música de espera (ver _append_queue_routes en
+    # config_generator.py). Se sube como archivo o se genera con TTS; el
+    # texto queda guardado solo para regenerarlo desde el panel.
+    announce_audio_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    announce_tts_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     announce_position: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

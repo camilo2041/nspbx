@@ -158,6 +158,10 @@ _COLUMN_PATCHES = [
     # Música de espera configurable (ver app/api/settings.py) — el valor por
     # defecto es el histórico (aleatorio entre todas las pistas del 8000).
     "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS hold_music VARCHAR(255) NOT NULL DEFAULT 'local_stream://moh'",
+    # Anuncio de entrada configurable de las colas (archivo o TTS) — ver
+    # _append_queue_routes en config_generator.py.
+    "ALTER TABLE queues ADD COLUMN IF NOT EXISTS announce_audio_path VARCHAR(500)",
+    "ALTER TABLE queues ADD COLUMN IF NOT EXISTS announce_tts_text TEXT",
 ]
 
 

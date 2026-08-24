@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   Badge,
@@ -18,11 +18,15 @@ import {
   Table,
   TableSkeleton,
   Td,
+  Textarea,
   Toggle,
   Tr,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { Extension, Queue } from "@/lib/types";
+import { Extension, Queue, TtsVoice } from "@/lib/types";
+
+const fileInputClass =
+  "block w-full cursor-pointer text-xs text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-on-brand hover:file:brightness-110";
 
 const STRATEGIES = [
   { value: "ring-all", label: "Timbrar a todos a la vez" },
@@ -48,6 +52,8 @@ const empty: Omit<Queue, "id" | "created_at"> = {
   wrap_up_time: 10,
   record: false,
   failover_extension: "",
+  announce_audio_path: null,
+  announce_tts_text: null,
   announce_position: false,
   enabled: true,
 };
@@ -61,6 +67,34 @@ export default function QueuesPage() {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Queue | null>(null);
   const [form, setForm] = useState(empty);
+
+  // Anuncio de entrada (archivo o TTS)
+  const [voices, setVoices] = useState<TtsVoice[]>([]);
+  const [ttsText, setTtsText] = useState("");
+  const [ttsProvider, setTtsProvider] = useState<"edge" | "elevenlabs">("edge");
+  const [ttsVoice, setTtsVoice] = useState("es-CO-SalomeNeural");
+  const [generando, setGenerando] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+  const [reproduciendo, setReproduciendo] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<TtsVoice[]>(`/api/voicebots/tts/voices${ttsProvider === "elevenlabs" ? "?provider=elevenlabs" : ""}`)
+      .then((vs) => {
+        setVoices(vs);
+        setTtsVoice(vs[0]?.id || "es-CO-SalomeNeural");
+      })
+      .catch(() => setError("No se pudieron cargar las voces"));
+  }, [ttsProvider]);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      audioRef.current?.pause();
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -132,6 +166,74 @@ export default function QueuesPage() {
       ...f,
       agents: f.agents.includes(number) ? f.agents.filter((a) => a !== number) : [...f.agents, number],
     }));
+  };
+
+  const aplicarColaActualizada = (q: Queue) => {
+    setEditing(q);
+    setForm({ ...q, failover_extension: q.failover_extension ?? "" });
+  };
+
+  const subirAnuncio = async (file: File) => {
+    if (!editing) return;
+    setSubiendo(true);
+    setError("");
+    try {
+      aplicarColaActualizada(await api.upload<Queue>(`/api/queues/${editing.id}/announce`, file));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al subir el anuncio");
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const generarAnuncio = async () => {
+    if (!editing || !ttsText.trim()) return;
+    setGenerando(true);
+    setError("");
+    try {
+      aplicarColaActualizada(
+        await api.post<Queue>(`/api/queues/${editing.id}/announce/tts`, {
+          text: ttsText,
+          voice: ttsVoice,
+          provider: ttsProvider,
+        })
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al generar el anuncio");
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  const quitarAnuncio = async () => {
+    if (!editing) return;
+    try {
+      aplicarColaActualizada(await api.del<Queue>(`/api/queues/${editing.id}/announce`));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al quitar el anuncio");
+    }
+  };
+
+  const escucharAnuncio = async () => {
+    if (!editing?.announce_audio_path) return;
+    try {
+      if (reproduciendo) {
+        audioRef.current?.pause();
+        setReproduciendo(false);
+        return;
+      }
+      const blob = await api.getBlob(`/api/queues/${editing.id}/announce/audio`);
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      blobUrlRef.current = url;
+      if (!audioRef.current) audioRef.current = new Audio();
+      audioRef.current.src = url;
+      audioRef.current.onended = () => setReproduciendo(false);
+      await audioRef.current.play();
+      setReproduciendo(true);
+    } catch {
+      setError("No se pudo reproducir el anuncio");
+    }
   };
 
   const strategyLabel = (value: string) => STRATEGIES.find((s) => s.value === value)?.label ?? value;
@@ -315,6 +417,83 @@ export default function QueuesPage() {
             placeholder="Ej. 1000, o un voizbot bot_2 — vacío = cuelga"
             hint="A dónde va la llamada si se agota la espera o no hay agentes disponibles."
           />
+
+          <div className="rounded-xl border border-line bg-surface-2 p-3.5">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs font-medium text-fg-soft">Anuncio de entrada (opcional)</span>
+              {editing?.announce_audio_path && (
+                <button
+                  type="button"
+                  onClick={escucharAnuncio}
+                  className="text-[11px] font-semibold text-brand-text transition-colors hover:underline"
+                >
+                  {reproduciendo ? "⏸ Detener" : "▶ Escuchar"}
+                </button>
+              )}
+            </div>
+            <p className="mb-2 text-[11px] leading-relaxed text-faint">
+              Lo escucha quien llama apenas entra a la cola, antes de la música de espera. Subí un archivo o generalo
+              con voz sintética.
+            </p>
+            {editing?.announce_audio_path ? (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-ok-soft px-2.5 py-1.5 text-[11px] text-ok-text">
+                <span className="truncate">🎵 {editing.announce_audio_path.split("/").pop()}</span>
+                <button type="button" onClick={quitarAnuncio} className="shrink-0 font-medium text-danger-text hover:underline">
+                  Quitar
+                </button>
+              </div>
+            ) : (
+              <p className="mb-2 text-[11px] text-faint">Sin anuncio — el que llama entra directo a la música de espera.</p>
+            )}
+            <input
+              type="file"
+              accept=".wav,.mp3,audio/wav,audio/mpeg"
+              disabled={subiendo}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) subirAnuncio(f);
+                e.target.value = "";
+              }}
+              className={fileInputClass}
+            />
+            {subiendo && <p className="mt-1 text-xs text-muted">Subiendo…</p>}
+
+            <div className="my-2.5 border-t border-line" />
+
+            <Textarea
+              value={ttsText}
+              onChange={setTtsText}
+              rows={2}
+              placeholder="O generalo con voz sintética: 'Estás llamando a…'"
+            />
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Select
+                label="Proveedor"
+                value={ttsProvider}
+                onChange={(v) => setTtsProvider(v as "edge" | "elevenlabs")}
+                options={[
+                  { value: "edge", label: "Gratis (edge-tts)" },
+                  { value: "elevenlabs", label: "ElevenLabs" },
+                ]}
+              />
+              <Select
+                label="Voz"
+                value={ttsVoice}
+                onChange={setTtsVoice}
+                options={voices.map((v) => ({ value: v.id, label: v.label }))}
+              />
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={generarAnuncio}
+              loading={generando}
+              disabled={!ttsText.trim()}
+            >
+              {generando ? "Generando…" : "Generar anuncio con voz"}
+            </Button>
+          </div>
 
           <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-2.5">
             <span className="text-sm text-fg-soft">Grabar llamadas de la cola</span>
