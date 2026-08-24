@@ -45,6 +45,18 @@ const OUTCOME_LABEL: Record<string, string> = {
   no_appointment: "Sin cita",
 };
 
+const CITA_ESTADO_LABEL: Record<string, string> = {
+  confirmed: "Agendadas",
+  cancelled: "Canceladas",
+  completed: "Completadas",
+};
+
+const CITA_ESTADO_COLOR: Record<string, string> = {
+  confirmed: C.ok,
+  cancelled: C.danger,
+  completed: C.brand,
+};
+
 const fmtSec = (s: number) => {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -249,6 +261,16 @@ interface Dash {
   top_origenes: { numero: string; total: number }[];
   llamadas_largas: { callee: string; caller: string; billsec: number; started_at: string }[];
   ia: { total: number; resolved: number; turns_avg: number; resolution_rate: number; outcomes: { outcome: string; count: number }[] };
+  citas: {
+    total: number;
+    confirmadas: number;
+    canceladas: number;
+    proximas: number;
+    confirmation_rate: number;
+    por_estado: { status: string; count: number }[];
+    por_dia: { dia: string; total: number }[];
+    por_semana: { dow: number; label: string; total: number }[];
+  };
 }
 
 function Kpi({ label, value, hint, tone = "fg" }: { label: string; value: React.ReactNode; hint?: string; tone?: string }) {
@@ -431,6 +453,49 @@ export default function CallCenterPage() {
               }))}
             />
             {(data?.ia.outcomes ?? []).length === 0 && <p className="text-sm text-faint">Sin llamadas con IA en el período.</p>}
+          </div>
+        </Card>
+      </div>
+
+      {/* Citas / agenda */}
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Kpi label="Citas creadas" value={data?.citas.total ?? 0} hint={`${data?.citas.confirmation_rate ?? 0}% de confirmación`} />
+        <Kpi label="Confirmadas por el paciente" value={data?.citas.confirmadas ?? 0} tone="ok" />
+        <Kpi label="Canceladas" value={data?.citas.canceladas ?? 0} tone="danger" />
+        <Kpi label="Próximas (futuro)" value={data?.citas.proximas ?? 0} hint="agendadas y no canceladas" />
+      </div>
+
+      <Card className="mb-4">
+        <CardHeader title="Citas creadas por día" subtitle="Agenda generada en el período" />
+        <div className="p-5 pt-2">
+          <BarChart data={(data?.citas.por_dia ?? []).map((d) => ({ label: fmtDia(d.dia), value: d.total }))} color={C.violet} />
+          <div className="mt-1 flex justify-between text-[9px] text-faint">
+            {(data?.citas.por_dia ?? []).map((d, i) =>
+              i % Math.max(1, Math.round(days / 8)) === 0 ? <span key={i}>{fmtDia(d.dia)}</span> : <span key={i} />
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="Citas por estado" subtitle="Agendadas / canceladas / completadas" />
+          <div className="p-5 pt-2">
+            <Donut
+              data={(data?.citas.por_estado ?? []).map((e) => ({
+                label: CITA_ESTADO_LABEL[e.status] ?? e.status,
+                value: e.count,
+                color: CITA_ESTADO_COLOR[e.status] ?? C.muted,
+              }))}
+            />
+            {(data?.citas.por_estado ?? []).length === 0 && <p className="text-sm text-faint">Sin citas en el período.</p>}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Citas por día de la semana" subtitle="En qué días se agendan" />
+          <div className="p-5 pt-2">
+            <BarChart data={(data?.citas.por_semana ?? []).map((d) => ({ label: d.label, value: d.total }))} color={C.violet} labels every={1} />
           </div>
         </Card>
       </div>

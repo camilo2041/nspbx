@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import permissions
 from app.core.auth import requiere
 from app.core.database import get_session
-from app.models import AiCallUsage, CallLog, User
+from app.models import AiCallUsage, Appointment, CallLog, User
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +258,85 @@ async def call_center_dashboard(
         "outcomes": [{"outcome": o, "count": c} for o, c in ia_outcomes_rows],
     }
 
+    # ---- Citas (agenda) ---------------------------------------------------
+    citas_total = (
+        await session.execute(select(func.count(Appointment.id)).where(Appointment.created_at >= desde))
+    ).scalar() or 0
+    citas_confirmadas = (
+        await session.execute(
+            select(func.count(Appointment.id)).where(
+                Appointment.created_at >= desde, Appointment.confirmed_at.is_not(None)
+            )
+        )
+    ).scalar() or 0
+    citas_canceladas = (
+        await session.execute(
+            select(func.count(Appointment.id)).where(Appointment.created_at >= desde, Appointment.status == "cancelled")
+        )
+    ).scalar() or 0
+    # Próximas = agendadas en el FUTURO y no canceladas (sin importar cuándo
+    # se crearon — lo que importa es cuánta agenda queda por delante).
+    citas_proximas = (
+        await session.execute(
+            select(func.count(Appointment.id)).where(
+                Appointment.appointment_date >= datetime.utcnow(), Appointment.status != "cancelled"
+            )
+        )
+    ).scalar() or 0
+
+    citas_estado_rows = (
+        await session.execute(
+            select(Appointment.status, func.count(Appointment.id))
+            .where(Appointment.created_at >= desde)
+            .group_by(Appointment.status)
+            .order_by(func.count(Appointment.id).desc())
+        )
+    ).all()
+    citas_por_estado = [{"status": s, "count": c} for s, c in citas_estado_rows]
+
+    cita_dia = func.to_char(Appointment.created_at, "YYYY-MM-DD").label("dia")
+    cita_dia_rows = (
+        await session.execute(
+            select(cita_dia, func.count(Appointment.id).label("total"))
+            .where(Appointment.created_at >= desde)
+            .group_by(cita_dia)
+            .order_by(cita_dia)
+        )
+    ).all()
+    citas_por_dia_map = {r.dia: r.total for r in cita_dia_rows}
+    citas_por_dia = [
+        {
+            "dia": (desde + timedelta(days=i)).strftime("%Y-%m-%d"),
+            "total": citas_por_dia_map.get((desde + timedelta(days=i)).strftime("%Y-%m-%d"), 0),
+        }
+        for i in range(days)
+    ]
+
+    cita_dow = extract("dow", Appointment.appointment_date).label("dow")
+    cita_dow_rows = (
+        await session.execute(
+            select(cita_dow, func.count(Appointment.id).label("total"))
+            .where(Appointment.created_at >= desde)
+            .group_by(cita_dow)
+            .order_by(cita_dow)
+        )
+    ).all()
+    citas_semana_map = {int(r.dow): r.total for r in cita_dow_rows}
+    citas_por_semana = [
+        {"dow": d, "label": _SEMANA[d], "total": citas_semana_map.get(d, 0)} for d in range(7)
+    ]
+
+    citas = {
+        "total": citas_total,
+        "confirmadas": citas_confirmadas,
+        "canceladas": citas_canceladas,
+        "proximas": citas_proximas,
+        "confirmation_rate": round(100 * citas_confirmadas / citas_total, 1) if citas_total else 0,
+        "por_estado": citas_por_estado,
+        "por_dia": citas_por_dia,
+        "por_semana": citas_por_semana,
+    }
+
     return {
         "desde": desde.isoformat(),
         "dias": days,
@@ -270,4 +349,5 @@ async def call_center_dashboard(
         "top_origenes": top_origenes,
         "llamadas_largas": llamadas_largas,
         "ia": ia,
+        "citas": citas,
     }
