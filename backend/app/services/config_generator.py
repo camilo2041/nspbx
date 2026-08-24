@@ -310,7 +310,31 @@ def _append_outbound_route(context: ET.Element, trunks: list) -> None:
 
 
 
-def _append_queue_routes(context: ET.Element, queues: list, record_all: bool = False) -> None:
+def _queue_entry_actions(
+    cond: ET.Element, queue, record_all: bool, priority_announce_text: str | None = None
+) -> None:
+    """Acciones comunes de la extensión de entrada de una cola: contesta,
+    graba si corresponde, reproduce el anuncio de entrada (si hay) y entra a
+    mod_callcenter. Con `priority_announce_text` se agrega además el anuncio
+    para llamantes VIP — solo se pasa en la rama prioritaria."""
+    ET.SubElement(cond, "action", attrib={"application": "answer"})
+    if queue.record and not record_all:
+        append_record_actions(cond)
+    if queue.announce_audio_path:
+        ET.SubElement(cond, "action", attrib={"application": "playback", "data": queue.announce_audio_path})
+    if priority_announce_text:
+        ET.SubElement(cond, "action", attrib={"application": "speak", "data": f"flite|kal|{priority_announce_text}"})
+    ET.SubElement(cond, "action", attrib={"application": "set", "data": "hangup_after_bridge=false"})
+    ET.SubElement(cond, "action", attrib={"application": "callcenter", "data": f"{queue.name}@$${{domain}}"})
+    if queue.failover_extension:
+        ET.SubElement(cond, "action", attrib={"application": "transfer", "data": f"{queue.failover_extension} XML default"})
+    else:
+        ET.SubElement(cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+
+
+def _append_queue_routes(
+    context: ET.Element, queues: list, record_all: bool = False, priority_announce_text: str | None = None
+) -> None:
     """Extensión de entrada de cada cola: contesta y entra a mod_callcenter.
     Si la cola se agota (timeout/sin agentes) o `callcenter` falla, sigue a
     la extensión de desbordamiento (o cuelga si no hay una configurada) —
@@ -320,26 +344,25 @@ def _append_queue_routes(context: ET.Element, queues: list, record_all: bool = F
     entera se graba desde el contexto de entrada (`_append_recording_hook`)
     y grabar de nuevo acá sería un segundo `record_session` sobre el mismo
     canal. Solo se graba acá cuando `Queue.record` es la ÚNICA razón para
-    grabar esta llamada."""
+    grabar esta llamada.
+
+    Llamadas VIP (nspbx_priority=1, seteado por el hook del context
+    "public") entran por una extensión PRIORITARIA que se evalúa ANTES que
+    la normal: escuchan el anuncio de prioridad además del de la cola. El
+    orden de atención dentro de la cola no cambia (mod_callcenter no
+    soporta prioridad de llamada nativa)."""
     for queue in queues:
         if not queue.enabled:
             continue
+        if priority_announce_text:
+            prio_ext = ET.SubElement(context, "extension", attrib={"name": f"queue_{queue.name}_prio", "continue": "false"})
+            ET.SubElement(prio_ext, "condition", attrib={"field": "destination_number", "expression": f"^{queue.extension}$"})
+            prio_cond = ET.SubElement(prio_ext, "condition", attrib={"field": "${nspbx_priority}", "expression": "^1$"})
+            _queue_entry_actions(prio_cond, queue, record_all, priority_announce_text)
+
         extension = ET.SubElement(context, "extension", attrib={"name": f"queue_{queue.name}", "continue": "false"})
         condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": f"^{queue.extension}$"})
-        ET.SubElement(condition, "action", attrib={"application": "answer"})
-        if queue.record and not record_all:
-            append_record_actions(condition)
-        # Anuncio de entrada configurable (archivo o TTS, ver api/queues.py):
-        # se reproduce UNA vez apenas contesta, antes de entrar a la cola y
-        # que arranque la música de espera. Si no hay anuncio, entra directo.
-        if queue.announce_audio_path:
-            ET.SubElement(condition, "action", attrib={"application": "playback", "data": queue.announce_audio_path})
-        ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=false"})
-        ET.SubElement(condition, "action", attrib={"application": "callcenter", "data": f"{queue.name}@$${{domain}}"})
-        if queue.failover_extension:
-            ET.SubElement(condition, "action", attrib={"application": "transfer", "data": f"{queue.failover_extension} XML default"})
-        else:
-            ET.SubElement(condition, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+        _queue_entry_actions(condition, queue, record_all)
 
 
 def _append_inbound_routes(public_context: ET.Element, routes: list) -> None:
@@ -466,6 +489,23 @@ def _append_blacklist_hook(public_context: ET.Element, blacklist: list | None) -
     ET.SubElement(c, "action", attrib={"application": "hangup", "data": "CALL_REJECTED"})
 
 
+def _append_priority_hook(public_context: ET.Element, priority_numbers: list | None) -> None:
+    """Marca las llamadas entrantes de números VIP (lista de prioridad):
+    setea `nspbx_priority=1` y antepone "PRIORITARIO" al nombre del caller
+    ID, para que el asesor lo vea en su teléfono/softphone. Con
+    continue=true, el ruteo normal sigue después — esta extensión solo
+    etiqueta, no interrumpe. No cambia el orden de atención."""
+    if not priority_numbers:
+        return
+    numbers = "|".join(p.number.strip() for p in priority_numbers if p.number.strip())
+    if not numbers:
+        return
+    ext = ET.SubElement(public_context, "extension", attrib={"name": "nspbx_priority", "continue": "true"})
+    c = ET.SubElement(ext, "condition", attrib={"field": "caller_id_number", "expression": f"^({numbers})$"})
+    ET.SubElement(c, "action", attrib={"application": "set", "data": "nspbx_priority=1"})
+    ET.SubElement(c, "action", attrib={"application": "set", "data": "effective_caller_id_name=PRIORITARIO ${caller_id_name}"})
+
+
 def _append_custom_outbound_routes(context: ET.Element, outbound_routes: list | None, trunks: list) -> None:
     """Rutas salientes por patrón de marcado (ej. ^9(\d+)$ o ^3\d{9}$)."""
     if not outbound_routes:
@@ -506,6 +546,8 @@ def build_dialplan_xml(
     max_call_minutes: int = 60,
     outbound_routes: list | None = None,
     blacklist: list | None = None,
+    priority_numbers: list | None = None,
+    priority_announce_text: str | None = None,
 ) -> str:
     """Genera la seccion <section name='dialplan'> completa."""
     root = _e("document", attrib={"type": "freeswitch/xml"})
@@ -521,7 +563,7 @@ def build_dialplan_xml(
     _append_dnd_hook(context, extensions)
     _append_local_extension_route(context, extensions)
     _append_voicebot_routes(section, context, bots, queues, record_all)
-    _append_queue_routes(context, queues or [], record_all)
+    _append_queue_routes(context, queues or [], record_all, priority_announce_text)
 
     # Echo test
     echo = ET.SubElement(context, "extension", attrib={"name": "Echo_Test", "continue": "false"})
@@ -537,6 +579,7 @@ def build_dialplan_xml(
     if record_all:
         _append_recording_hook(public_context)
     _append_blacklist_hook(public_context, blacklist)
+    _append_priority_hook(public_context, priority_numbers)
     _append_inbound_routes(public_context, inbound_routes or [])
 
     return ET.tostring(root, encoding="unicode")

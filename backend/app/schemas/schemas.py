@@ -652,3 +652,19 @@ class BlacklistOut(BlacklistBase):
     id: int
     created_at: datetime
 
+
+class PriorityBase(BaseModel):
+    number: str = Field(..., min_length=1, max_length=30)
+    note: Optional[str] = Field(default=None, max_length=255)
+
+
+class PriorityCreate(PriorityBase):
+    pass
+
+
+class PriorityOut(PriorityBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+

@@ -143,6 +143,12 @@ class SystemSettings(Base):
     # Se persiste acá y se aplica en vivo con global_setvar (ver
     # app/api/settings.py) — sin reiniciar FreeSWITCH.
     hold_music: Mapped[str] = mapped_column(String(255), default="local_stream://moh")
+    # Mensaje que se le dice a un llamante VIP (número en la lista de
+    # prioridad) cuando entra a una cola, antes de la música de espera. Se
+    # lee con flite (sin API keys). Vacío = no se anuncia.
+    priority_announce_text: Mapped[str] = mapped_column(
+        Text, default="Llamada prioritaria. Un asesor lo atenderá en breve."
+    )
     # Voz del voizbot con IA. edge-tts es gratis (voces nativas de Colombia);
     # ElevenLabs suena más natural pero cuesta ~15x más por llamada — el TTS
     # es el ~95% del costo de una conversación con IA (medido: 936
@@ -483,6 +489,21 @@ class BlacklistNumber(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     phone: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PriorityNumber(Base):
+    """Números VIP/prioritarios: cuando llaman, se les marca una variable
+    (`nspbx_priority`), se les antepone "PRIORITARIO" al nombre del caller ID
+    para que el asesor lo vea, y en las colas se les reproduce un anuncio
+    especial. NO cambia el orden de atención (ver auditoría: mod_callcenter
+    no soporta prioridad de llamada nativa)."""
+
+    __tablename__ = "priority_numbers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

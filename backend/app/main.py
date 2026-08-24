@@ -26,6 +26,7 @@ from app.api import (
     logs_ws,
     ops_chat,
     outbound_routes as outbound_routes_api,
+    priority_numbers as priority_numbers_api,
     queues as queues_api,
     settings as settings_api,
     system,
@@ -162,6 +163,9 @@ _COLUMN_PATCHES = [
     # _append_queue_routes en config_generator.py.
     "ALTER TABLE queues ADD COLUMN IF NOT EXISTS announce_audio_path VARCHAR(500)",
     "ALTER TABLE queues ADD COLUMN IF NOT EXISTS announce_tts_text TEXT",
+    # Llamadas prioritarias (VIP): lista de números + texto del anuncio —
+    # ver app/api/priority_numbers.py y _append_priority_hook.
+    "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS priority_announce_text TEXT",
 ]
 
 
@@ -290,6 +294,7 @@ app.include_router(inbound_routes.router, **_con(permissions.TELEFONIA_GESTIONAR
 app.include_router(outbound_routes_api.router, **_con(permissions.TELEFONIA_GESTIONAR))
 app.include_router(time_conditions_api.router, **_con(permissions.TELEFONIA_GESTIONAR))
 app.include_router(blacklist_api.router, **_con(permissions.TELEFONIA_GESTIONAR))
+app.include_router(priority_numbers_api.router, **_con(permissions.TELEFONIA_GESTIONAR))
 
 
 # El coordinador puede mirar los voizbots pero no editarlos ni lanzar

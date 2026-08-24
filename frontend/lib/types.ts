@@ -441,6 +441,13 @@ export interface BlacklistNumber {
   created_at: string;
 }
 
+export interface PriorityNumber {
+  id: number;
+  number: string;
+  note: string | null;
+  created_at: string;
+}
+
 export interface ActiveChannel {
   uuid: string;
   direction: string;
