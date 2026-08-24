@@ -33,6 +33,7 @@ export default function SoftphonePage() {
     phase,
     remoteParty,
     muted,
+    held,
     callSeconds,
     connect,
     disconnect,
@@ -42,6 +43,7 @@ export default function SoftphonePage() {
     reject,
     hangup,
     toggleMute,
+    toggleHold,
     sendDtmf,
   } = useSoftphone();
 
@@ -217,12 +219,16 @@ export default function SoftphonePage() {
             {phase === "in-call" && (
               <div className="animate-pop rounded-xl border border-ok/25 bg-ok-soft p-4">
                 <p className="mb-3 font-medium text-ok-text">
-                  En llamada con {remoteParty} ·{" "}
+                  {held ? "En espera con" : "En llamada con"} {remoteParty} ·{" "}
                   <span className="tabular-nums">{fmt(callSeconds)}</span>
+                  {held && <span className="ml-2 rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-info-text">música de espera</span>}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="danger" onClick={hangup}>
                     Colgar
+                  </Button>
+                  <Button variant="secondary" onClick={toggleHold}>
+                    {held ? "Quitar espera" : "Poner en espera"}
                   </Button>
                   <Button variant="secondary" onClick={toggleMute}>
                     {muted ? "Reactivar mic" : "Silenciar"}

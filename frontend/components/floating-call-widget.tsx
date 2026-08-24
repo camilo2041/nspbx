@@ -15,7 +15,7 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "
  */
 export function FloatingCallWidget() {
   const pathname = usePathname();
-  const { phase, remoteParty, callSeconds, muted, hangup, toggleMute } = useSoftphone();
+  const { phase, remoteParty, callSeconds, muted, held, hangup, toggleMute, toggleHold } = useSoftphone();
 
   if (pathname.startsWith("/softphone")) return null;
   if (phase !== "outgoing" && phase !== "in-call") return null;
@@ -40,6 +40,28 @@ export function FloatingCallWidget() {
             {enLlamada ? fmt(callSeconds) : "Llamando…"}
           </div>
         </div>
+
+        {enLlamada && (
+          <button
+            type="button"
+            onClick={toggleHold}
+            title={held ? "Quitar de espera" : "Poner en espera (música)"}
+            aria-label={held ? "Quitar de espera" : "Poner en espera (música)"}
+            className={`press flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+              held
+                ? "border-info/30 bg-info-soft text-info-text"
+                : "border-line bg-surface-2 text-muted hover:bg-surface-3 hover:text-fg"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+              {held ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 5v14l11-7z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 4h4v16H6zM14 4h4v16h-4z" />
+              )}
+            </svg>
+          </button>
+        )}
 
         {enLlamada && (
           <button

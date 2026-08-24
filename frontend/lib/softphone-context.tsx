@@ -43,6 +43,7 @@ interface SoftphoneCtx {
   phase: CallPhase;
   remoteParty: string;
   muted: boolean;
+  held: boolean;
   callSeconds: number;
   setDestination: (v: string) => void;
   setConnError: (v: string) => void;
@@ -55,6 +56,7 @@ interface SoftphoneCtx {
   reject: () => Promise<void>;
   hangup: () => Promise<void>;
   toggleMute: () => void;
+  toggleHold: () => Promise<void>;
   sendDtmf: (digit: string) => void;
 }
 
@@ -89,6 +91,18 @@ export function useSoftphone() {
   if (!ctx) throw new Error("useSoftphone debe usarse dentro de <SoftphoneProvider>");
   return ctx;
 }
+
+// Modifier de SDP para el re-INVITE de hold: pone TODAS las m-lines en
+// "a=inactive". Al llegarle a FreeSWITCH, sofia lo interpreta como hold y
+// reproduce la música de espera hacia la otra pata de la llamada. Un
+// re-INVITE sin este modifier (o uno que deje sendrecv) la saca de espera.
+const holdModifier = (description: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> => {
+  const sdp = (description.sdp || "")
+    .replace(/a=sendrecv/g, "a=inactive")
+    .replace(/a=sendonly/g, "a=inactive")
+    .replace(/a=recvonly/g, "a=inactive");
+  return Promise.resolve({ ...description, sdp });
+};
 
 /**
  * Timbre sintetizado con Web Audio API en vez de un archivo de sonido: no
@@ -207,6 +221,7 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<CallPhase>("idle");
   const [remoteParty, setRemoteParty] = useState("");
   const [muted, setMuted] = useState(false);
+  const [held, setHeld] = useState(false);
   const [callSeconds, setCallSeconds] = useState(0);
 
   const userAgentRef = useRef<UserAgent | null>(null);
@@ -342,6 +357,7 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
           setPhase("idle");
           setRemoteParty("");
           setMuted(false);
+          setHeld(false);
           sessionRef.current = null;
           if (audioRef.current) audioRef.current.srcObject = null;
           break;
@@ -593,6 +609,30 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Poner en espera con música: sip.js 0.21 no trae Session.hold(), así
+  // que el hold se hace con un re-INVITE (Session.invite sobre una sesión
+  // establecida) y un modifier de SDP que pone las m-lines en "inactive".
+  // Al recibirlo, FreeSWITCH le toca al que está del OTRO LADO la música
+  // configurada en hold_music (local_stream://moh, ver vars.xml y
+  // local_stream.conf.xml), mientras el asesor queda en silencio. Para
+  // sacar de espera basta un re-INVITE SIN modifiers: la SDH regenera el
+  // offer con sendrecv y la llamada sigue normal.
+  const toggleHold = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session || phase !== "in-call") return;
+    try {
+      if (held) {
+        await session.invite();
+        setHeld(false);
+      } else {
+        await session.invite({ sessionDescriptionHandlerModifiers: [holdModifier] });
+        setHeld(true);
+      }
+    } catch {
+      // si la renegociación falla, la llamada queda como estaba
+    }
+  }, [phase, held]);
+
   const sendDtmf = useCallback(
     (digit: string) => {
       if (phase === "in-call") {
@@ -618,6 +658,7 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
         phase,
         remoteParty,
         muted,
+        held,
         callSeconds,
         setDestination,
         setConnError,
@@ -630,6 +671,7 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
         reject,
         hangup,
         toggleMute,
+        toggleHold,
         sendDtmf,
       }}
     >
