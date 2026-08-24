@@ -21,6 +21,7 @@ from app.api import (
     blacklist as blacklist_api,
     calls as calls_api,
     campaigns,
+    dashboard,
     extensions,
     inbound_routes,
     logs_ws,
@@ -311,6 +312,7 @@ app.include_router(queues_api.router, **_con(permissions.COLAS_GESTIONAR))
 app.include_router(appointments_api.router)  # permisos por endpoint: el agente de IA entra acá
 app.include_router(calls_api.router)  # permisos por endpoint: /fs/cdr lo llama FreeSWITCH
 app.include_router(ai_usage.router, **_con(permissions.CONSUMO_IA_VER))
+app.include_router(dashboard.router)  # permiso por endpoint (LLAMADAS_VER_TODAS)
 
 # Ajustes y estado del sistema: API keys de los proveedores y control de
 # FreeSWITCH.

@@ -76,6 +76,17 @@ const GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/call-center",
+        label: "Call Center",
+        permiso: PERMISOS.llamadasTodas,
+        icon: icon(
+          <>
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7 15l3-4 3 3 4-6" />
+          </>
+        ),
+      },
+      {
         href: "/appointments",
         label: "Citas",
         permiso: PERMISOS.citas,
