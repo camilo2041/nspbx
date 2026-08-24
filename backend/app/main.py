@@ -155,6 +155,9 @@ _COLUMN_PATCHES = [
     # Tope de conversaciones de IA simultáneas — antes no existía ninguno,
     # ver app/services/ai_agent.py.
     "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS max_concurrent_ai_calls INTEGER NOT NULL DEFAULT 20",
+    # Música de espera configurable (ver app/api/settings.py) — el valor por
+    # defecto es el histórico (aleatorio entre todas las pistas del 8000).
+    "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS hold_music VARCHAR(255) NOT NULL DEFAULT 'local_stream://moh'",
 ]
 
 
@@ -201,6 +204,10 @@ async def lifespan(app: FastAPI):
     async with async_session() as session:
         row = await settings_api.get_or_create_settings(session)
         settings_api.apply_to_runtime(row)
+        # La música de espera se guarda en la DB y se aplica a FreeSWITCH con
+        # global_setvar (ver app/api/settings.py); al arrancar se reaplica por
+        # si quedó algún valor sin propagar o FreeSWITCH reinició.
+        await settings_api.aplicar_hold_en_vivo(row.hold_music or "local_stream://moh")
         trunks_rows = (await session.execute(select(Trunk))).scalars().all()
         sync_gateways(trunks_rows)
         # mod_callcenter guarda colas/agentes en memoria — se pierden en cada

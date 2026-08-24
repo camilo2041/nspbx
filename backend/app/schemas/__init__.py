@@ -27,6 +27,7 @@ from app.schemas.schemas import (
     QueueCreate,
     QueueOut,
     QueueUpdate,
+    HoldMusicUpdate,
     SystemSettingsOut,
     SystemSettingsUpdate,
     TrunkBase,

@@ -135,6 +135,14 @@ class SystemSettings(Base):
     ai_llm_model: Mapped[str] = mapped_column(String(100), default="deepseek-chat")
     ai_llm_api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     record_all_calls: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Música de espera (MOH): lo que se le toca a quien queda en espera
+    # cuando un asesor usa "Poner en espera" en el softphone. El valor es
+    # el que consume FreeSWITCH en la variable hold_music:
+    #   local_stream://moh              -> aleatorio entre todas las pistas
+    #   local_stream://moh/8000/<arch>  -> una pista puntual
+    # Se persiste acá y se aplica en vivo con global_setvar (ver
+    # app/api/settings.py) — sin reiniciar FreeSWITCH.
+    hold_music: Mapped[str] = mapped_column(String(255), default="local_stream://moh")
     # Voz del voizbot con IA. edge-tts es gratis (voces nativas de Colombia);
     # ElevenLabs suena más natural pero cuesta ~15x más por llamada — el TTS
     # es el ~95% del costo de una conversación con IA (medido: 936

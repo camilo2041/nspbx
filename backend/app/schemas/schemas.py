@@ -199,6 +199,13 @@ class SystemSettingsOut(BaseModel):
     max_concurrent_ai_calls: int = 20
 
 
+class HoldMusicUpdate(BaseModel):
+    """Selección de música de espera desde Ajustes (ver app/api/settings.py)."""
+
+    mode: str  # "random" (todas las pistas, aleatorio) | "file" (una pista)
+    file: Optional[str] = None  # nombre del archivo en sounds/music/8000 cuando mode == "file"
+
+
 class SystemSettingsUpdate(BaseModel):
     app_name: Optional[str] = None
     fs_domain: Optional[str] = None
@@ -219,6 +226,7 @@ class SystemSettingsUpdate(BaseModel):
     deepgram_api_key: Optional[str] = None
 
     record_all_calls: Optional[bool] = None
+    hold_music: Optional[str] = None
     ai_stt_provider: Optional[str] = Field(default=None, pattern="^(elevenlabs|deepgram)$")
     ai_voice_provider: Optional[str] = Field(default=None, pattern="^(edge|elevenlabs|deepgram)$")
     ai_voice_id: Optional[str] = None

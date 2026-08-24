@@ -19,6 +19,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { DetectedIp, Diagnostics, MaintenanceStatus, SystemSettings, TtsVoice } from "@/lib/types";
+import { HoldMusicManager } from "@/components/hold-music-manager";
 
 function fecha(iso: string | null) {
   if (!iso) return "Nunca";
@@ -445,6 +446,14 @@ export default function SettingsPage() {
               hint="5060 por defecto (UDP/TCP)"
             />
           </CardBody>
+        </Card>
+
+        <Card delay={240} className="lg:col-span-2">
+          <CardHeader
+            title="Música de espera"
+            subtitle="Lo que escucha quien queda en espera cuando un asesor pone la llamada en hold desde el softphone."
+          />
+          <HoldMusicManager />
         </Card>
 
         <Card delay={240} className="lg:col-span-2">
