@@ -90,7 +90,12 @@ function BarChart({
   const bw = 100 / data.length;
   return (
     <div>
-      <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="w-full">
+      <svg
+        viewBox={`0 0 100 ${height}`}
+        preserveAspectRatio="none"
+        className="w-full"
+        style={{ height }}
+      >
         {data.map((d, i) => {
           const h = (d.value / max) * (height - 8);
           return (
@@ -153,7 +158,7 @@ function AreaChart({
     `${path(key)} L${pw},${ph - 4} L0,${ph - 4} Z`;
 
   return (
-    <svg viewBox={`0 0 ${pw} ${ph}`} preserveAspectRatio="none" className="w-full">
+    <svg viewBox={`0 0 ${pw} ${ph}`} preserveAspectRatio="none" className="w-full" style={{ height }}>
       <path d={area(aKey)} fill={aColor} opacity={0.15} />
       <path d={path(aKey)} fill="none" stroke={aColor} strokeWidth={1.2} vectorEffect="non-scaling-stroke" />
       <path d={area(bKey)} fill={bColor} opacity={0.12} />
