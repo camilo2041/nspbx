@@ -54,9 +54,14 @@ export default function SoftphonePage() {
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   // Histórico de la PROPIA extensión (ver /api/calls/mias): cada softphone
-  // muestra sus llamadas, sea cual sea el rol del usuario.
+  // muestra sus llamadas, sea cual sea el rol del usuario. Se abre desde un
+  // botón lateral que despliega una side panel con buscador y filtros.
   const [historial, setHistorial] = useState<CallLog[]>([]);
   const [historialError, setHistorialError] = useState("");
+  const [historialAbierto, setHistorialAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroDir, setFiltroDir] = useState<"todas" | "inbound" | "outbound">("todas");
+  const [filtroEst, setFiltroEst] = useState<"todas" | "answered" | "no_answer" | "otro">("todas");
 
   const cargarHistorial = async () => {
     try {
@@ -77,6 +82,31 @@ export default function SoftphonePage() {
     if (fasePreviaRef.current !== "idle" && phase === "idle") cargarHistorial();
     fasePreviaRef.current = phase;
   }, [phase]);
+
+  const extPropia = entorno?.extension?.number;
+  const historialConOtro = historial.map((c) => ({
+    ...c,
+    otro: extPropia && c.caller_number === extPropia ? c.callee_number : c.caller_number,
+    entrante: c.direction === "inbound",
+  }));
+  const historialFiltrado = historialConOtro.filter((c) => {
+    if (filtroDir !== "todas" && c.direction !== filtroDir) return false;
+    if (filtroEst === "answered" && c.status !== "answered") return false;
+    if (filtroEst === "no_answer" && c.status !== "no_answer") return false;
+    if (filtroEst === "otro" && !(c.status === "busy" || c.status === "failed" || c.status === "rejected" || c.status === "cancelled")) return false;
+    const q = busqueda.trim().toLowerCase();
+    if (q && !(c.otro || "").toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const estadoDe = (c: CallLog): { label: string; color: "green" | "amber" | "red" | "slate" } => {
+    if (c.status === "answered") return { label: "Contestada", color: "green" };
+    if (c.status === "no_answer") return { label: "Sin respuesta", color: "amber" };
+    if (c.status === "busy") return { label: "Ocupado", color: "red" };
+    if (c.status === "cancelled") return { label: "Cancelada", color: "slate" };
+    if (c.status === "rejected") return { label: "Rechazada", color: "slate" };
+    return { label: "Fallida", color: "red" };
+  };
 
   const connBadge =
     connState === "registered" ? (
@@ -321,70 +351,164 @@ export default function SoftphonePage() {
         </Card>
       </div>
 
-      <Card className="mt-4">
-        <CardHeader
-          title="Histórico de mi extensión"
-          subtitle="Llamadas donde tu extensión fue origen o destino — se actualiza al terminar cada llamada"
-        />
-        <CardBody>
-          {historialError && <ErrorBanner message={historialError} />}
-          {historial.length === 0 ? (
-            <p className="text-sm text-faint">Todavía no hay llamadas registradas para tu extensión.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-line text-[11px] uppercase tracking-wide text-muted">
-                  <tr>
-                    <th className="px-3 py-2">Dirección</th>
-                    <th className="px-3 py-2">Número</th>
-                    <th className="px-3 py-2">Estado</th>
-                    <th className="px-3 py-2">Cuándo</th>
-                    <th className="px-3 py-2 text-right">Duración</th>
-                    <th className="px-3 py-2 text-right">Acción</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {historial.map((c) => {
-                    const ext = entorno?.extension?.number;
-                    const otro = ext && c.caller_number === ext ? c.callee_number : c.caller_number;
-                    const entrante = c.direction === "inbound";
-                    const estado =
-                      c.status === "answered"
-                        ? { label: "Contestada", color: "green" as const }
-                        : c.status === "no_answer"
-                          ? { label: "Sin respuesta", color: "amber" as const }
-                          : c.status === "busy"
-                            ? { label: "Ocupado", color: "red" as const }
-                            : { label: c.status, color: "red" as const };
+      {/* Botón lateral que abre el histórico de la extensión */}
+      <button
+        type="button"
+        onClick={() => setHistorialAbierto(true)}
+        title="Ver el histórico de mi extensión"
+        aria-label="Ver el histórico de mi extensión"
+        className="fixed right-0 top-1/2 z-[80] flex -translate-y-1/2 items-center gap-1.5 rounded-l-xl border border-r-0 border-line bg-surface px-2 py-3.5 text-[11px] font-semibold text-muted shadow-[var(--shadow-2)] transition-colors hover:bg-surface-2 hover:text-brand-text"
+        style={{ writingMode: "vertical-rl" }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+          <circle cx="12" cy="12" r="9" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 2" />
+        </svg>
+        Historial
+      </button>
+
+      {/* Side panel del histórico */}
+      {historialAbierto && (
+        <>
+          <div
+            className="fixed inset-0 z-[90] bg-black/40"
+            onClick={() => setHistorialAbierto(false)}
+            aria-hidden="true"
+          />
+          <aside
+            className="animate-slide-left fixed right-0 top-0 z-[95] flex h-full w-[24rem] max-w-[100vw] flex-col border-l border-line bg-surface shadow-[var(--shadow-3)]"
+            role="dialog"
+            aria-label="Histórico de mi extensión"
+          >
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div>
+                <div className="text-sm font-bold text-fg">Histórico de mi extensión</div>
+                <div className="text-[11px] text-faint">{historial.length} llamada(s) registradas</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistorialAbierto(false)}
+                aria-label="Cerrar"
+                className="press flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-2 border-b border-line p-3">
+              <div className="relative">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+                </svg>
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar por número…"
+                  className="w-full rounded-xl border border-line bg-surface-2 py-2 pl-9 pr-3 text-sm text-fg outline-none placeholder:text-faint focus:border-brand focus:bg-surface"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { key: "todas", texto: "Todas" },
+                  { key: "inbound", texto: "Entrantes" },
+                  { key: "outbound", texto: "Salientes" },
+                ].map((o) => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    onClick={() => setFiltroDir(o.key as "todas" | "inbound" | "outbound")}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      filtroDir === o.key ? "bg-brand text-on-brand" : "bg-surface-3 text-muted hover:text-fg"
+                    }`}
+                  >
+                    {o.texto}
+                  </button>
+                ))}
+                <span className="mx-0.5 h-4 border-l border-line" />
+                {[
+                  { key: "todas", texto: "Todas" },
+                  { key: "answered", texto: "Contestadas" },
+                  { key: "no_answer", texto: "Sin respuesta" },
+                  { key: "otro", texto: "Fallidas/Ocupado" },
+                ].map((o) => (
+                  <button
+                    key={o.key}
+                    type="button"
+                    onClick={() => setFiltroEst(o.key as "todas" | "answered" | "no_answer" | "otro")}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      filtroEst === o.key ? "bg-brand text-on-brand" : "bg-surface-3 text-muted hover:text-fg"
+                    }`}
+                  >
+                    {o.texto}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {historialError && <ErrorBanner message={historialError} />}
+              {historial.length === 0 ? (
+                <p className="p-4 text-sm text-faint">Todavía no hay llamadas registradas para tu extensión.</p>
+              ) : historialFiltrado.length === 0 ? (
+                <p className="p-4 text-sm text-faint">Nada coincide con el filtro.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {historialFiltrado.map((c) => {
+                    const st = estadoDe(c);
                     return (
-                      <tr key={c.id} className="text-xs">
-                        <td className="px-3 py-2">
-                          <Badge color={entrante ? "blue" : "violet"}>{entrante ? "Entrante" : "Saliente"}</Badge>
-                        </td>
-                        <td className="px-3 py-2 font-mono font-medium text-fg-soft">{otro || "—"}</td>
-                        <td className="px-3 py-2">
-                          <Badge color={estado.color}>{estado.label}</Badge>
-                        </td>
-                        <td className="px-3 py-2 text-muted">{fechaLocal(c.started_at)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {c.billsec ? `${Math.floor(c.billsec / 60)}:${String(c.billsec % 60).padStart(2, "0")}` : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {otro && (
-                            <Button size="sm" variant="secondary" onClick={() => setDestination(otro)}>
-                              Llamar
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
+                      <li
+                        key={c.id}
+                        className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 transition-colors hover:border-brand/30"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span
+                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] ${
+                                c.entrante ? "bg-blue-500/15 text-blue-400" : "bg-violet-500/15 text-violet-400"
+                              }`}
+                            >
+                              {c.entrante ? "⇩" : "⇧"}
+                            </span>
+                            <span className="truncate font-mono text-sm font-medium text-fg">{c.otro || "—"}</span>
+                          </div>
+                          <Badge color={st.color}>{st.label}</Badge>
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between text-[11px] text-faint">
+                          <span>{fechaLocal(c.started_at)}</span>
+                          <span className="tabular-nums">
+                            {c.billsec ? `${Math.floor(c.billsec / 60)}:${String(c.billsec % 60).padStart(2, "0")}` : "—"}
+                          </span>
+                        </div>
+                        {c.otro && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDestination(c.otro ?? "");
+                              setHistorialAbierto(false);
+                            }}
+                            className="mt-1.5 w-full rounded-lg border border-line bg-surface py-1.5 text-xs font-semibold text-brand-text transition-colors hover:bg-brand-soft"
+                          >
+                            Volver a llamar
+                          </button>
+                        )}
+                      </li>
                     );
                   })}
-                </tbody>
-              </table>
+                </ul>
+              )}
             </div>
-          )}
-        </CardBody>
-      </Card>
+          </aside>
+        </>
+      )}
     </div>
   );
 }
