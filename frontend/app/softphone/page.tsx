@@ -1,7 +1,12 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import { Badge, Button, Card, CardBody, CardHeader, ErrorBanner, Note, PageHeader, Toggle } from "@/components/ui";
 import { useSoftphone, resolverServidorSip } from "@/lib/softphone-context";
+import { api } from "@/lib/api";
+import { fechaLocal } from "@/lib/dates";
+import { CallLog } from "@/lib/types";
 
 const DIALPAD: { digit: string; letters?: string }[] = [
   { digit: "1" },
@@ -20,8 +25,7 @@ const DIALPAD: { digit: string; letters?: string }[] = [
 
 export default function SoftphonePage() {
   const {
-    entorno,
-    loadError,
+    entorno,    loadError,
     dndCambiando,
     dndError,
     setDndError,
@@ -48,6 +52,31 @@ export default function SoftphonePage() {
   } = useSoftphone();
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+  // Histórico de la PROPIA extensión (ver /api/calls/mias): cada softphone
+  // muestra sus llamadas, sea cual sea el rol del usuario.
+  const [historial, setHistorial] = useState<CallLog[]>([]);
+  const [historialError, setHistorialError] = useState("");
+
+  const cargarHistorial = async () => {
+    try {
+      setHistorial(await api.get<CallLog[]>("/api/calls/mias?limit=25"));
+      setHistorialError("");
+    } catch {
+      setHistorialError("No se pudo cargar el histórico de llamadas");
+    }
+  };
+
+  useEffect(() => {
+    cargarHistorial();
+  }, []);
+
+  // Refresca al terminar cada llamada (cuando la fase vuelve a "idle").
+  const fasePreviaRef = useRef(phase);
+  useEffect(() => {
+    if (fasePreviaRef.current !== "idle" && phase === "idle") cargarHistorial();
+    fasePreviaRef.current = phase;
+  }, [phase]);
 
   const connBadge =
     connState === "registered" ? (
@@ -291,6 +320,71 @@ export default function SoftphonePage() {
           </CardBody>
         </Card>
       </div>
+
+      <Card className="mt-4">
+        <CardHeader
+          title="Histórico de mi extensión"
+          subtitle="Llamadas donde tu extensión fue origen o destino — se actualiza al terminar cada llamada"
+        />
+        <CardBody>
+          {historialError && <ErrorBanner message={historialError} />}
+          {historial.length === 0 ? (
+            <p className="text-sm text-faint">Todavía no hay llamadas registradas para tu extensión.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-line text-[11px] uppercase tracking-wide text-muted">
+                  <tr>
+                    <th className="px-3 py-2">Dirección</th>
+                    <th className="px-3 py-2">Número</th>
+                    <th className="px-3 py-2">Estado</th>
+                    <th className="px-3 py-2">Cuándo</th>
+                    <th className="px-3 py-2 text-right">Duración</th>
+                    <th className="px-3 py-2 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {historial.map((c) => {
+                    const ext = entorno?.extension?.number;
+                    const otro = ext && c.caller_number === ext ? c.callee_number : c.caller_number;
+                    const entrante = c.direction === "inbound";
+                    const estado =
+                      c.status === "answered"
+                        ? { label: "Contestada", color: "green" as const }
+                        : c.status === "no_answer"
+                          ? { label: "Sin respuesta", color: "amber" as const }
+                          : c.status === "busy"
+                            ? { label: "Ocupado", color: "red" as const }
+                            : { label: c.status, color: "red" as const };
+                    return (
+                      <tr key={c.id} className="text-xs">
+                        <td className="px-3 py-2">
+                          <Badge color={entrante ? "blue" : "violet"}>{entrante ? "Entrante" : "Saliente"}</Badge>
+                        </td>
+                        <td className="px-3 py-2 font-mono font-medium text-fg-soft">{otro || "—"}</td>
+                        <td className="px-3 py-2">
+                          <Badge color={estado.color}>{estado.label}</Badge>
+                        </td>
+                        <td className="px-3 py-2 text-muted">{fechaLocal(c.started_at)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {c.billsec ? `${Math.floor(c.billsec / 60)}:${String(c.billsec % 60).padStart(2, "0")}` : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {otro && (
+                            <Button size="sm" variant="secondary" onClick={() => setDestination(otro)}>
+                              Llamar
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardBody>
+      </Card>
     </div>
   );
 }

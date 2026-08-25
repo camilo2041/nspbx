@@ -408,6 +408,29 @@ async def spy_on_call(payload: SpyRequest, usuario: User = Depends(usuario_actua
         raise HTTPException(status_code=500, detail=f"No se pudo iniciar la supervisión: {exc}")
 
 
+@router.get("/api/calls/mias")
+async def mis_llamadas(
+    limit: int = 25,
+    session: AsyncSession = Depends(get_session),
+    usuario: User = Depends(usuario_actual),
+):
+    """Histórico de la EXTENSIÓN del usuario que pide, sea cual sea su rol:
+    llamadas donde su número fue origen o destino. Lo usa el softphone para
+    mostrar el historial propio (el /api/calls general, en cambio, filtra
+    por rol y un admin vería todas). Requiere extensión asignada."""
+    ext = usuario.extension.number if usuario.extension else None
+    if not ext:
+        return []
+    query = (
+        select(CallLog)
+        .where((CallLog.caller_number == ext) | (CallLog.callee_number == ext))
+        .order_by(desc(CallLog.started_at), desc(CallLog.id))
+        .limit(min(limit, 100))
+    )
+    rows = (await session.execute(query)).scalars().all()
+    return [_call_out(c) for c in rows]
+
+
 @router.get("/api/calls/{call_id}", response_model=CallLogOut)
 async def get_call(call_id: int, session: AsyncSession = Depends(get_session), usuario: User = _VER):
     return _call_out(await _traer(call_id, session, usuario))
