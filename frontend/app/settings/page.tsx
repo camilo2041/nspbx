@@ -88,6 +88,17 @@ const empty: SystemSettings = {
   max_concurrent_ai_calls: 20,
 };
 
+// Pestañas de Ajustes: agrupan la configuración por tema para entender el
+// sistema de un vistazo. El estado del form es UNO solo — cambiar de
+// pestaña no pierde nada y "Guardar" persiste todo junto.
+const TABS: { id: string; label: string; desc: string }[] = [
+  { id: "estado", label: "Diagnóstico", desc: "Estado real de la central ahora" },
+  { id: "central", label: "Central", desc: "Identidad, softphones y motor FreeSWITCH" },
+  { id: "ia", label: "Voizbot IA", desc: "Modelo, voz, transcripción y tarifas" },
+  { id: "capacidad", label: "Capacidad y disco", desc: "Límites de llamadas, grabaciones y respaldos" },
+  { id: "audio", label: "Música de espera", desc: "Lo que escucha quien queda en hold" },
+];
+
 export default function SettingsPage() {
   const [form, setForm] = useState<SystemSettings>(empty);
   const [loading, setLoading] = useState(true);
@@ -106,6 +117,10 @@ export default function SettingsPage() {
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [diagCargando, setDiagCargando] = useState(true);
   const [errorDiag, setErrorDiag] = useState("");
+
+  // Ajustes se dividió en pestañas por tema para que se entienda de un
+  // vistazo qué hace cada parte del sistema en vez de una sola lista larga.
+  const [tab, setTab] = useState("estado");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -260,6 +275,24 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Barra de pestañas por tema */}
+      <div className="mb-4 flex flex-wrap gap-1 rounded-2xl border border-line bg-surface-2 p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`rounded-xl px-3 py-2 text-left transition-colors ${
+              tab === t.id ? "bg-brand text-on-brand shadow-[var(--shadow-1)]" : "text-muted hover:bg-surface-3 hover:text-fg"
+            }`}
+          >
+            <span className="block text-xs font-semibold">{t.label}</span>
+            <span className={`block text-[10px] ${tab === t.id ? "text-on-brand/80" : "text-faint"}`}>{t.desc}</span>
+          </button>
+        ))}
+      </div>
+
+      {tab === "estado" && (
       <Card className="mb-4">
         <CardHeader
           title="Diagnóstico"
@@ -347,7 +380,9 @@ export default function SettingsPage() {
           )}
         </CardBody>
       </Card>
+      )}
 
+      {tab === "central" && (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card delay={0}>
           <CardHeader title="General" subtitle="Identidad del PBX y dominio SIP" />
@@ -447,15 +482,21 @@ export default function SettingsPage() {
             />
           </CardBody>
         </Card>
+      </div>
+      )}
 
-        <Card delay={240} className="lg:col-span-2">
+      {tab === "audio" && (
+        <Card className="mb-4">
           <CardHeader
             title="Música de espera"
             subtitle="Lo que escucha quien queda en espera cuando un asesor pone la llamada en hold desde el softphone."
           />
           <HoldMusicManager />
         </Card>
+      )}
 
+      {tab === "ia" && (
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card delay={240} className="lg:col-span-2">
           <CardHeader
             title="Modelo de lenguaje (LLM)"
@@ -621,7 +662,11 @@ export default function SettingsPage() {
             />
           </CardBody>
         </Card>
+      </div>
+      )}
 
+      {tab === "capacidad" && (
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card delay={390}>
           <CardHeader
             title="CPU y memoria — capacidad de la central"
@@ -746,6 +791,7 @@ export default function SettingsPage() {
           </CardBody>
         </Card>
       </div>
+      )}
 
       <div className="mt-4 flex items-center gap-3">
         <Button onClick={save} loading={saving}>
