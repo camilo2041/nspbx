@@ -50,6 +50,7 @@ async def fs_dialplan(session: AsyncSession = Depends(get_session)):
     settings_row = await session.get(SystemSettings, 1)
     record_all = bool(settings_row and settings_row.record_all_calls)
     max_call_minutes = settings_row.max_call_duration_minutes if settings_row else 60
+    max_concurrent_calls = settings_row.max_concurrent_calls if settings_row else 0
     priority_announce_text = (settings_row.priority_announce_text if settings_row else None) or ""
     xml = build_dialplan_xml(
         extensions,
@@ -59,6 +60,7 @@ async def fs_dialplan(session: AsyncSession = Depends(get_session)):
         inbound_routes,
         record_all,
         max_call_minutes,
+        max_concurrent_calls=max_concurrent_calls,
         outbound_routes=outbound_routes,
         blacklist=blacklist,
         priority_numbers=priority_numbers,

@@ -110,6 +110,54 @@ def _append_dnd_hook(context: ET.Element, extensions: list) -> None:
     ET.SubElement(c2, "action", attrib={"application": "hangup", "data": "USER_BUSY"})
 
 
+def _append_forward_feature_codes(context: ET.Element) -> None:
+    """*72<dest> / *21<dest> activan el desvío incondicional de QUIEN MARCA;
+    *73 lo apaga. El destino se guarda en la base interna de FreeSWITCH
+    (`db insert/forward/<ext>/<dest>`) y se consulta en cada llamada a esa
+    extensión (ver _append_forward_hook) — mismo mecanismo que el DND."""
+    activar = ET.SubElement(context, "extension", attrib={"name": "nspbx_forward_on", "continue": "false"})
+    c1 = ET.SubElement(activar, "condition", attrib={"field": "destination_number", "expression": r"^\*(21|72)(\d+)$"})
+    ET.SubElement(c1, "action", attrib={"application": "answer"})
+    # delete + insert para que cambiar el destino no falle por el anterior.
+    ET.SubElement(c1, "action", attrib={"application": "db", "data": "delete/forward/${caller_id_number}"})
+    ET.SubElement(c1, "action", attrib={"application": "db", "data": "insert/forward/${caller_id_number}/$2"})
+    _decir(c1, "forward_on", "Desvío de llamadas activado.")
+    ET.SubElement(c1, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+
+    desactivar = ET.SubElement(context, "extension", attrib={"name": "nspbx_forward_off", "continue": "false"})
+    c2 = ET.SubElement(desactivar, "condition", attrib={"field": "destination_number", "expression": r"^\*73$"})
+    ET.SubElement(c2, "action", attrib={"application": "answer"})
+    ET.SubElement(c2, "action", attrib={"application": "db", "data": "delete/forward/${caller_id_number}"})
+    _decir(c2, "forward_off", "Desvío de llamadas desactivado.")
+    ET.SubElement(c2, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+
+
+def _append_forward_hook(context: ET.Element, extensions: list) -> None:
+    """Si la extensión destino tiene un desvío configurado (`db
+    forward/<ext>`), la llamada salta directo a ese número re-ruteando por
+    el context "default" — así sirve para extensiones, salientes y colas.
+    Va ANTES de Local_Extension. El tope de un salto (nspbx_forward_hop)
+    evita bucles tipo A→B→A."""
+    if not extensions:
+        return
+    numbers = "|".join(e.number for e in extensions)
+    ext = ET.SubElement(context, "extension", attrib={"name": "nspbx_forward", "continue": "false"})
+    ET.SubElement(ext, "condition", attrib={"field": "destination_number", "expression": f"^({numbers})$"})
+    ET.SubElement(
+        ext,
+        "condition",
+        attrib={"field": "${db(select/forward/${destination_number})}", "expression": r"^\d{1,20}$"},
+    )
+    cond = ET.SubElement(ext, "condition", attrib={"field": "${nspbx_forward_hop}", "expression": "^$"})
+    ET.SubElement(cond, "action", attrib={"application": "log", "data": "Llamada desviada por extensión"})
+    ET.SubElement(cond, "action", attrib={"application": "set", "data": "nspbx_forward_hop=1"})
+    ET.SubElement(
+        cond,
+        "action",
+        attrib={"application": "transfer", "data": "${db(select/forward/${destination_number})} XML default"},
+    )
+
+
 def _append_local_extension_route(context: ET.Element, extensions: list) -> None:
     """Extension a extension (Local_Extension).
 
@@ -532,17 +580,33 @@ def _append_recording_hook(context: ET.Element) -> None:
     append_record_actions(condition)
 
 
-def _append_call_limits_hook(context: ET.Element, max_minutes: int) -> None:
-    """Tope de duración para TODA llamada del contexto — entrante,
-    saliente o interna. Va primero, sin condición de "grabar todo" (esa es
-    una preferencia de privacidad; esto es protección contra fraude
-    telefónico y no depende de ella).
+def _append_call_limits_hook(context: ET.Element, max_minutes: int, max_concurrent: int = 0) -> None:
+    """Topes para TODA llamada del contexto — entrante, saliente o interna.
+    Va primero, sin condición de "grabar todo" (esa es una preferencia de
+    privacidad; esto es protección contra fraude/saturación y no depende de
+    ella).
 
-    Sin esto, una extensión comprometida —o simplemente un bug— puede
-    dejar una llamada corriendo horas hacia un número caro sin que nadie
-    se entere hasta la factura. `execute_on_answer` dispara recién cuando
-    el canal contesta de verdad: no cuenta el timbrado.
+    `max_concurrent`: tope global de canales simultáneos. El app `limit`
+    (v1.10: `limit hash global <nombre> <max> !<causa>`) cuenta el canal y,
+    si se supera el máximo, cuelga con USER_BUSY; si entra, incrementa el
+    contador y el hook de estado lo libera al colgar. Va en default Y public
+    para cubrir internas, entrantes y salientes originadas. Mismo criterio
+    que el autodialer: cuenta canales (una llamada conectada = 2), así el
+    número de la pantalla significa "canales", no "llamadas".
+
+    `max_minutes`: si no, una extensión comprometida —o un bug— puede dejar
+    una llamada corriendo horas hacia un número caro. `execute_on_answer`
+    dispara recién cuando el canal contesta de verdad: no cuenta el timbrado.
     """
+    if max_concurrent and max_concurrent > 0:
+        ext = ET.SubElement(context, "extension", attrib={"name": "nspbx_tope_concurrentes", "continue": "true"})
+        c = ET.SubElement(ext, "condition")
+        ET.SubElement(
+            c,
+            "action",
+            attrib={"application": "limit", "data": f"hash global nspbx_concurrent {max_concurrent} !USER_BUSY"},
+        )
+
     if max_minutes <= 0:
         return
     extension = ET.SubElement(context, "extension", attrib={"name": "nspbx_tope_duracion", "continue": "true"})
@@ -667,6 +731,7 @@ def build_dialplan_xml(
     inbound_routes: list | None = None,
     record_all: bool = False,
     max_call_minutes: int = 60,
+    max_concurrent_calls: int = 0,
     outbound_routes: list | None = None,
     blacklist: list | None = None,
     priority_numbers: list | None = None,
@@ -679,14 +744,16 @@ def build_dialplan_xml(
     section = ET.SubElement(root, "section", attrib={"name": "dialplan"})
     context = ET.SubElement(section, "context", attrib={"name": "default"})
 
-    _append_call_limits_hook(context, max_call_minutes)
+    _append_call_limits_hook(context, max_call_minutes, max_concurrent_calls)
     _append_ringback_hook(context)
     if record_all:
         _append_recording_hook(context)
     _append_call_pickup_feature_code(context)
     _append_dnd_feature_codes(context)
     _append_voicemail_feature(context)
+    _append_forward_feature_codes(context)
     _append_dnd_hook(context, extensions)
+    _append_forward_hook(context, extensions)
     _append_local_extension_route(context, extensions)
     _append_voicebot_routes(section, context, bots, queues, record_all)
     _append_queue_routes(context, queues or [], record_all, priority_announce_text)
@@ -701,7 +768,7 @@ def build_dialplan_xml(
     _append_outbound_route(context, trunks or [])
 
     public_context = ET.SubElement(section, "context", attrib={"name": "public"})
-    _append_call_limits_hook(public_context, max_call_minutes)
+    _append_call_limits_hook(public_context, max_call_minutes, max_concurrent_calls)
     if record_all:
         _append_recording_hook(public_context)
     _append_blacklist_hook(public_context, blacklist)
