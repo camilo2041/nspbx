@@ -8,6 +8,7 @@ const SUGERENCIAS = [
   "¿Qué llamadas fallaron hoy?",
   "¿Cómo está el disco?",
   "¿Alguna troncal con problemas?",
+  "¿Dónde creo una extensión?",
   "¿Hubo errores en el backend?",
 ];
 
@@ -63,8 +64,9 @@ export function OpsChatPanel({
               </div>
             )}
             <p className="max-w-xs text-sm text-muted">
-              Solo respondo con datos reales del panel — si algo no lo puedo consultar, te lo digo en vez de
-              inventar una causa.
+              Te ayudo con el estado del sistema (llamadas, troncales, disco) y te digo{" "}
+              <strong className="text-fg-soft">dónde se hace cada cosa</strong> en el panel — siempre con datos
+              reales, y si no lo puedo consultar te lo digo en vez de inventar.
             </p>
             <div className="flex flex-wrap justify-center gap-1.5">
               {SUGERENCIAS.map((s) => (

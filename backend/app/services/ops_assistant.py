@@ -43,10 +43,56 @@ Cuando encuentres algo mal, sé concreto: qué está mal, desde cuándo (si \
 los datos lo dicen), y si hay una acción obvia sugerila (ej. "la troncal \
 X está anunciando una IP privada, revisá su configuración de red/NAT").
 
+Además de diagnosticar, orientás sobre DÓNDE se hace cada cosa en el \
+panel: si preguntan "dónde hago X", "cómo configuro Y" o "para qué \
+sirve Z", usá SIEMPRE la herramienta mapa_sistema (que describe cada \
+pantalla y ejemplos) antes de responder, y respondé con la ruta concreta \
+(ej. "La música de espera se cambia en Ajustes → Música de espera").
+
 Las respuestas son para leer en una pantalla de chat: párrafos cortos, \
 sin firmas ni despedidas. Si la pregunta no tiene que ver con el \
 funcionamiento del sistema, decí que solo podés ayudar con diagnóstico \
-del propio NSPBX."""
+y orientación del propio NSPBX."""
+
+
+MAPA_SISTEMA = """Mapa del panel NSPBX (qué hace cada pantalla y dónde se hace cada tarea):
+
+- Inicio / Dashboard (/): resumen general de la central.
+- Call Center (/call-center): gráficas y métricas de llamadas, citas y uso IA.
+- Softphone (/softphone): el teléfono del navegador — llamar, contestar, silenciar, poner en espera (con música), no molestar.
+- Llamadas (/calls): historial (CDR), escuchar/descargar grabaciones, resúmenes, y supervisión en vivo (espiar/susurrar/unirse) con filtros por cola/voizbot/extensión.
+- Citas (/appointments): agenda del consultorio y gestiones (confirmar, cancelar, reagendar).
+- Extensiones (/extensions): crear/editar extensiones SIP (número, contraseña, buzón de voz, nombre) y probar una llamada.
+- Troncales (/trunks): proveedores SIP de salida — servidor, usuario/password, registro, caller ID, transporte.
+- Rutas entrantes (/inbound-routes): qué pasa con cada número entrante (DID) — derivar a extensión, cola, voizbot o condición de tiempo.
+- Rutas salientes (/outbound-routes): qué troncal se usa según el patrón del número marcado (con strip/prepend de dígitos).
+- Condiciones de tiempo (/time-conditions): horarios hábiles/fuera de horario (se enlazan desde Rutas entrantes).
+- Lista negra (/blacklist): números rechazados automáticamente al entrar.
+- Prioritarias (VIP) (/priority-numbers): números que se marcan como prioritarios (etiqueta PRIORITARIO + anuncio en colas).
+- Colas (/queues): colas de atención — agentes, estrategia, anuncio de entrada, desbordamiento.
+- Voizbots (/voicebots): IVR de teclas y agentes conversacionales con IA (editor de flujo visual por nodos).
+- Campañas (/campaigns): marcación masiva (autodialer) con números y mensaje.
+- Usuarios (/users): cuentas del panel y sus permisos/rol.
+- Consumo IA (/ai-usage): uso y costo estimado de las llamadas del voizbot.
+- Logs (/logs): consola de logs de FreeSWITCH en vivo.
+- Ajustes (/settings): toda la configuración, en pestañas:
+  - Diagnóstico: estado real de FreeSWITCH, softphone, IP pública y troncales.
+  - Central: nombre/dominio, conexión FreeSWITCH (ESL) y softphones.
+  - Voizbot IA: modelo de lenguaje, voz/transcripción, agente externo y tarifas.
+  - Capacidad y disco: límites de llamadas/concurrencia y espacio de grabaciones/respaldos.
+  - Música de espera: qué pistas suenan en hold.
+- Asistente (/assistant): este mismo chat a pantalla completa.
+
+Ejemplos de "dónde hago X":
+- Crear una extensión → Extensiones.
+- Agregar un proveedor de llamadas → Troncales.
+- Crear una cola de atención → Colas.
+- Crear un menú IVR o un agente con IA → Voizbots.
+- Cambiar la música de espera → Ajustes → Música de espera.
+- Ver por qué no entraron llamadas → Llamadas o Ajustes → Diagnóstico.
+- Lanzar una campaña de llamadas → Campañas.
+- Bloquear un número → Lista negra.
+- Marcar un número como prioritario → Prioritarias (VIP)."""
 
 
 def _fmt(dt: datetime | None) -> str:
@@ -173,6 +219,10 @@ async def _errores_backend(session, args: dict) -> str:
     return f"Errores del backend en los últimos {dias} días (hasta {limite}):\n" + "\n".join(lineas)
 
 
+async def _mapa_sistema(session, args: dict) -> str:
+    return MAPA_SISTEMA
+
+
 _DIAS_LIMITE_PARAMS = {
     "type": "object",
     "properties": {
@@ -241,6 +291,14 @@ TOOLS = [
             "parameters": _DIAS_LIMITE_PARAMS,
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "mapa_sistema",
+            "description": "Mapa del panel: qué hace cada pantalla y dónde se hace cada tarea (crear extensiones/troncales/colas/voizbots, música de espera, ver llamadas, etc.). Usar SIEMPRE que pregunten 'dónde hago X', 'cómo configuro Y' o 'para qué sirve Z'.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 ]
 
 
@@ -260,6 +318,8 @@ async def _ejecutar_tool(session, usuario: User, name: str, args: dict) -> str:
             return await _estado_backups(session, args)
         if name == "errores_backend":
             return await _errores_backend(session, args)
+        if name == "mapa_sistema":
+            return await _mapa_sistema(session, args)
     except Exception as exc:
         logger.exception("Chat de diagnóstico: falló la herramienta %s", name)
         return f"La herramienta {name} falló al ejecutarse: {exc}"

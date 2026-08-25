@@ -69,8 +69,21 @@ export function FloatingAssistantWidget() {
         type="button"
         onClick={() => setAbierto((v) => !v)}
         aria-label={abierto ? "Cerrar el asistente" : "Preguntarle al asistente"}
-        className="press flex h-14 w-14 items-center justify-center rounded-full bg-brand text-on-brand shadow-[var(--shadow-brand)] transition-transform hover:bg-brand-hover hover:scale-105 active:scale-95"
+        title={
+          abierto
+            ? "Cerrar"
+            : "¿En qué te ayudo hoy? Estado del sistema, dónde se hace cada cosa, troncales, llamadas…"
+        }
+        className="press relative flex h-14 w-14 items-center justify-center rounded-full bg-brand text-on-brand shadow-[var(--shadow-brand)] transition-transform hover:bg-brand-hover hover:scale-105 active:scale-95"
       >
+        {!abierto && (
+          <span
+            aria-hidden="true"
+            className="animate-fade-soft pointer-events-none absolute right-16 top-1/2 w-max max-w-[11rem] -translate-y-1/2 rounded-xl border border-line bg-surface px-3 py-1.5 text-left text-[11px] font-medium leading-snug text-fg shadow-[var(--shadow-2)]"
+          >
+            ¿En qué te ayudo hoy? Estado, dónde se hace cada cosa…
+          </span>
+        )}
         {abierto ? (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
             <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
