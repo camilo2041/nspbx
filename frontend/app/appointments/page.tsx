@@ -66,6 +66,7 @@ export default function AppointmentsPage() {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Appointment | null>(null);
   const [form, setForm] = useState(empty);
+  const [saving, setSaving] = useState(false);
   const [dayFilter, setDayFilter] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState("");
@@ -131,6 +132,8 @@ export default function AppointmentsPage() {
   };
 
   const save = async () => {
+    if (saving) return; // doble clic en "Crear" creaba dos citas
+    setSaving(true);
     try {
       // Se manda la hora tal cual la escribió el usuario, SIN pasar por
       // toISOString(): eso la convertía a UTC y la cita de las 10:00
@@ -146,6 +149,8 @@ export default function AppointmentsPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -353,7 +358,9 @@ export default function AppointmentsPage() {
             <Button variant="secondary" onClick={() => setModal(false)}>
               Cancelar
             </Button>
-            <Button onClick={save}>{editing ? "Guardar" : "Crear"}</Button>
+            <Button onClick={save} loading={saving}>
+              {saving ? "Guardando…" : editing ? "Guardar" : "Crear"}
+            </Button>
           </>
         }
       >

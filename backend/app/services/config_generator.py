@@ -111,30 +111,71 @@ def _append_dnd_hook(context: ET.Element, extensions: list) -> None:
 
 
 def _append_local_extension_route(context: ET.Element, extensions: list) -> None:
-    """Extension a extension (Local_Extension)."""
+    """Extension a extension (Local_Extension).
+
+    Las extensiones con `voicemail` activo, si no contestan o están
+    ocupadas, mandan al que llama al buzón a dejar un mensaje (con
+    hangup_after_bridge=true el camino "contestó" cuelga normal y la
+    siguiente acción nunca corre; con continue_on_fail=true el camino
+    "no contestó" sigue de largo y llega a `voicemail`). Las que no usan
+    buzón cuelgan con NO_ANSWER como antes.
+    """
     if not extensions:
         return
-    extension = ET.SubElement(context, "extension", attrib={"name": "Local_Extension", "continue": "false"})
-    numbers = "|".join(e.number for e in extensions)
-    condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": f"^({numbers})$"})
-    ET.SubElement(condition, "action", attrib={"application": "log", "data": "Llamada local a extension"})
-    # SIN "answer" acá — contestaba la pata de quien LLAMA antes de
-    # siquiera intentar timbrarle a quien recibe. Entre dos softphones
-    # (SIP.js/WebRTC), eso le manda un 200 OK al que llama al instante:
-    # su pantalla salta a "en llamada" sin que el otro lado haya hecho
-    # nada, y a quien recibe nunca le suena porque bridge todavía ni
-    # arrancó. Sin este "answer", la pata de quien llama se queda
-    # timbrando de verdad hasta que el destino conteste — es `bridge`
-    # el que se encarga de contestarla en ese momento, no antes.
-    ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=true"})
-    ET.SubElement(condition, "action", attrib={"application": "set", "data": "continue_on_fail=true"})
-    # $${domain} (global, siempre existe) en vez de ${domain_name} (variable
-    # por llamada que no queda seteada si se llega aquí sin pasar antes por
-    # una ruta entrante que la defina explícitamente — ver flow_engine.py).
-    ET.SubElement(condition, "action", attrib={"application": "bridge", "data": "user/${destination_number}@$${domain}"})
-    anti = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": f"^({numbers})$"})
-    anti.set("break", "on-false")
-    ET.SubElement(anti, "action", attrib={"application": "hangup", "data": "NO_ANSWER"})
+    con_vm = [e for e in extensions if e.voicemail]
+    sin_vm = [e for e in extensions if not e.voicemail]
+
+    if con_vm:
+        numbers = "|".join(e.number for e in con_vm)
+        extension = ET.SubElement(context, "extension", attrib={"name": "Local_Extension_VM", "continue": "false"})
+        condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": f"^({numbers})$"})
+        ET.SubElement(condition, "action", attrib={"application": "log", "data": "Llamada local a extension (con buzón)"})
+        # SIN "answer" acá — contestaba la pata de quien LLAMA antes de
+        # siquiera intentar timbrarle a quien recibe (ver el comentario en
+        # la extensión sin buzón de abajo). El bridge contesta en su momento.
+        ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=true"})
+        ET.SubElement(condition, "action", attrib={"application": "set", "data": "continue_on_fail=true"})
+        ET.SubElement(condition, "action", attrib={"application": "bridge", "data": "user/${destination_number}@$${domain}"})
+        # Solo llega acá si el bridge NO conectó (no contestó, ocupado…):
+        # el que llama deja un mensaje en el buzón de la extensión.
+        ET.SubElement(condition, "action", attrib={"application": "voicemail", "data": f"default ${{${{domain}}}} ${{destination_number}}"})
+
+    if sin_vm:
+        numbers = "|".join(e.number for e in sin_vm)
+        extension = ET.SubElement(context, "extension", attrib={"name": "Local_Extension", "continue": "false"})
+        condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": f"^({numbers})$"})
+        ET.SubElement(condition, "action", attrib={"application": "log", "data": "Llamada local a extension"})
+        # SIN "answer" acá — contestaba la pata de quien LLAMA antes de
+        # siquiera intentar timbrarle a quien recibe. Entre dos softphones
+        # (SIP.js/WebRTC), eso le manda un 200 OK al que llama al instante:
+        # su pantalla salta a "en llamada" sin que el otro lado haya hecho
+        # nada, y a quien recibe nunca le suena porque bridge todavía ni
+        # arrancó. Sin este "answer", la pata de quien llama se queda
+        # timbrando de verdad hasta que el destino conteste — es `bridge`
+        # el que se encarga de contestarla en ese momento, no antes.
+        ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=true"})
+        ET.SubElement(condition, "action", attrib={"application": "set", "data": "continue_on_fail=true"})
+        # $${domain} (global, siempre existe) en vez de ${domain_name} (variable
+        # por llamada que no queda seteada si se llega aquí sin pasar antes por
+        # una ruta entrante que la defina explícitamente — ver flow_engine.py).
+        ET.SubElement(condition, "action", attrib={"application": "bridge", "data": "user/${destination_number}@$${domain}"})
+        anti = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": f"^({numbers})$"})
+        anti.set("break", "on-false")
+        ET.SubElement(anti, "action", attrib={"application": "hangup", "data": "NO_ANSWER"})
+
+
+def _append_voicemail_feature(context: ET.Element) -> None:
+    """*97 abre el buzón de voz de quien marca (escuchar mensajes).
+
+    El `s` al final hace que la app muestre el menú principal del buzón en
+    vez de grabar. El dueño se identifica por su caller ID: en una llamada
+    interna el softphone/teléfono registrado manda su extensión como
+    caller_id_number."""
+    ext = ET.SubElement(context, "extension", attrib={"name": "nspbx_vmain", "continue": "false"})
+    c = ET.SubElement(ext, "condition", attrib={"field": "destination_number", "expression": r"^\*97$"})
+    ET.SubElement(c, "action", attrib={"application": "answer"})
+    ET.SubElement(c, "action", attrib={"application": "voicemail", "data": f"default ${{${{domain}}}} ${{caller_id_number}} s"})
+    ET.SubElement(c, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
 
 
 def _parse_bot_menu(config_json: str | None) -> dict[str, str]:
@@ -365,13 +406,34 @@ def _append_queue_routes(
         _queue_entry_actions(condition, queue, record_all)
 
 
-def _append_inbound_routes(public_context: ET.Element, routes: list) -> None:
+def _emitir_destino(cond: ET.Element, destination_type: str, destination_value: str | None) -> None:
+    """Transfiere al contexto default (extensión, cola o voizbot se resuelven
+    ahí) o cuelga si el destino es "colgar" o está vacío. Lo usa el ruteo
+    normal de entrantes y las ramas de una condición de tiempo."""
+    if destination_type == "hangup" or not destination_value:
+        ET.SubElement(cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+    else:
+        ET.SubElement(cond, "action", attrib={"application": "transfer", "data": f"{destination_value} XML default"})
+
+
+def _append_inbound_routes(
+    public_context: ET.Element,
+    routes: list,
+    time_conditions: list | None = None,
+    time_groups: list | None = None,
+) -> None:
     """Contexto "public": adonde caen las llamadas entrantes de la troncal
     (ver sip_profiles/external.xml y el context="public" de cada gateway).
     Cada ruta hace matching por DID (número marcado por quien llama) y
     transfiere al contexto "default", reutilizando TODO el ruteo que ya
     existe ahí (extensión → Local_Extension, cola → queue_<nombre>,
     voizbot → bot_<id>) — igual que "Inbound Routes" en Issabel/FreePBX.
+
+    Si la ruta apunta a una CONDICIÓN DE TIEMPO, se generan varias
+    extensiones: una por cada regla del grupo de horarios (DID + weekday +
+    time-of-day → destino "en horario") y una final de "fuera de horario"
+    (solo DID → destino nomatch). FreeSWITCH evalúa las extensiones en
+    orden y se queda con la primera cuyas condiciones matcheen TODAS.
 
     Si ninguna ruta matchea, se cuelga (UNALLOCATED_NUMBER) en vez de
     dejar pasar la llamada a "default" sin control — eso sería un hueco de
@@ -381,6 +443,9 @@ def _append_inbound_routes(public_context: ET.Element, routes: list) -> None:
     tag_ext = ET.SubElement(public_context, "extension", attrib={"name": "outside_call_tag", "continue": "true"})
     tag_cond = ET.SubElement(tag_ext, "condition")
     ET.SubElement(tag_cond, "action", attrib={"application": "set", "data": "outside_call=true"})
+
+    tc_by_id = {str(tc.id): tc for tc in (time_conditions or [])}
+    tg_by_id = {str(tg.id): tg for tg in (time_groups or [])}
 
     # (prioridad, id) y no solo prioridad: dos rutas empatadas en prioridad
     # necesitan un desempate determinístico — sin el id, el orden entre
@@ -404,13 +469,55 @@ def _append_inbound_routes(public_context: ET.Element, routes: list) -> None:
     for route in ordered:
         pattern = route.did_pattern.strip()
         expression = ".*" if pattern.lower() in ("any", "*", "") else f"^{pattern}$"
-        extension = ET.SubElement(public_context, "extension", attrib={"name": f"did_{route.id}_{route.name}", "continue": "false"})
+        nombre_base = f"did_{route.id}_{route.name}"
+
+        # Condición de tiempo: rama por horario + rama "fuera de horario".
+        if route.destination_type == "time_condition":
+            tc = tc_by_id.get(str(route.destination_value or ""))
+            tg = tg_by_id.get(str(tc.time_group_id)) if tc else None
+            if tc is None or tg is None:
+                ext_rot = ET.SubElement(public_context, "extension", attrib={"name": nombre_base, "continue": "false"})
+                c_rot = ET.SubElement(ext_rot, "condition", attrib={"field": "destination_number", "expression": expression})
+                ET.SubElement(c_rot, "action", attrib={"application": "set", "data": "domain_name=$${domain}"})
+                ET.SubElement(c_rot, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+                continue
+
+            try:
+                schedule = json.loads(tg.schedule_json or "[]")
+            except (ValueError, TypeError):
+                schedule = []
+            if not isinstance(schedule, list):
+                schedule = []
+
+            agrego = False
+            for i, entry in enumerate(schedule):
+                if not isinstance(entry, dict):
+                    continue
+                days = str(entry.get("days") or "").strip()
+                tf = str(entry.get("time_from") or "").strip()
+                tt = str(entry.get("time_to") or "").strip()
+                if not days or not tf or not tt:
+                    continue
+                ext_t = ET.SubElement(public_context, "extension", attrib={"name": f"{nombre_base}_tc{i}", "continue": "false"})
+                ET.SubElement(ext_t, "condition", attrib={"field": "destination_number", "expression": expression})
+                ET.SubElement(ext_t, "condition", attrib={"field": "weekday", "expression": days})
+                c_t = ET.SubElement(ext_t, "condition", attrib={"field": "time-of-day", "expression": f"{tf}-{tt}"})
+                ET.SubElement(c_t, "action", attrib={"application": "set", "data": "domain_name=$${domain}"})
+                _emitir_destino(c_t, tc.match_destination_type, tc.match_destination_value)
+                agrego = True
+
+            # Fuera de horario: siempre hay una rama (aunque el grupo no
+            # tenga reglas válidas, para no dejar la ruta muerta).
+            ext_n = ET.SubElement(public_context, "extension", attrib={"name": f"{nombre_base}_nomatch", "continue": "false"})
+            c_n = ET.SubElement(ext_n, "condition", attrib={"field": "destination_number", "expression": expression})
+            ET.SubElement(c_n, "action", attrib={"application": "set", "data": "domain_name=$${domain}"})
+            _emitir_destino(c_n, tc.nomatch_destination_type, tc.nomatch_destination_value)
+            continue
+
+        extension = ET.SubElement(public_context, "extension", attrib={"name": nombre_base, "continue": "false"})
         condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": expression})
         ET.SubElement(condition, "action", attrib={"application": "set", "data": "domain_name=$${domain}"})
-        if route.destination_type == "hangup" or not route.destination_value:
-            ET.SubElement(condition, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
-        else:
-            ET.SubElement(condition, "action", attrib={"application": "transfer", "data": f"{route.destination_value} XML default"})
+        _emitir_destino(condition, route.destination_type, route.destination_value)
 
     fallback = ET.SubElement(public_context, "extension", attrib={"name": "no_route", "continue": "false"})
     fb_cond = ET.SubElement(fallback, "condition", attrib={"field": "destination_number", "expression": ".*"})
@@ -548,6 +655,8 @@ def build_dialplan_xml(
     blacklist: list | None = None,
     priority_numbers: list | None = None,
     priority_announce_text: str | None = None,
+    time_conditions: list | None = None,
+    time_groups: list | None = None,
 ) -> str:
     """Genera la seccion <section name='dialplan'> completa."""
     root = _e("document", attrib={"type": "freeswitch/xml"})
@@ -560,6 +669,7 @@ def build_dialplan_xml(
         _append_recording_hook(context)
     _append_call_pickup_feature_code(context)
     _append_dnd_feature_codes(context)
+    _append_voicemail_feature(context)
     _append_dnd_hook(context, extensions)
     _append_local_extension_route(context, extensions)
     _append_voicebot_routes(section, context, bots, queues, record_all)
@@ -580,7 +690,7 @@ def build_dialplan_xml(
         _append_recording_hook(public_context)
     _append_blacklist_hook(public_context, blacklist)
     _append_priority_hook(public_context, priority_numbers)
-    _append_inbound_routes(public_context, inbound_routes or [])
+    _append_inbound_routes(public_context, inbound_routes or [], time_conditions, time_groups)
 
     return ET.tostring(root, encoding="unicode")
 

@@ -65,6 +65,7 @@ export default function CampaignsPage() {
   const [stats, setStats] = useState<CampaignStats | null>(null);
   const [bulk, setBulk] = useState("");
   const [uploadResult, setUploadResult] = useState<CampaignNumbersUploadResult | null>(null);
+  const [agregando, setAgregando] = useState(false);
   // Aparte de `error`: ese banner vive fuera del modal de detalle, así
   // que con el modal abierto queda tapado y nunca se llega a ver — un
   // error invisible es lo mismo que no tener validación.
@@ -364,6 +365,9 @@ export default function CampaignsPage() {
       })
       .filter((f) => f.phone);
     if (!selected || filas.length === 0) return;
+    if (agregando) return; // doble clic duplicaba la carga de números
+    setAgregando(true);
+    setErrorNumeros("");
 
     try {
       const resultado = await api.post<CampaignNumbersUploadResult>(`/api/campaigns/${selected.id}/numbers`, {
@@ -379,6 +383,8 @@ export default function CampaignsPage() {
       await recargarNumeros(selected.id);
     } catch (e) {
       setErrorNumeros(e instanceof Error ? e.message : "Error al agregar números");
+    } finally {
+      setAgregando(false);
     }
   };
 
@@ -691,8 +697,8 @@ export default function CampaignsPage() {
                 />
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <Button variant="secondary" onClick={addNumbers} disabled={!bulk.trim()}>
-                  Agregar números
+                <Button variant="secondary" onClick={addNumbers} disabled={!bulk.trim() || agregando} loading={agregando}>
+                  {agregando ? "Cargando…" : "Agregar números"}
                 </Button>
                 {bulk.trim() && (
                   <Button variant="ghost" onClick={() => setBulk("")}>

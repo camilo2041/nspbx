@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.clock import a_hora_local
 
@@ -295,8 +295,14 @@ class CampaignNumberUpdate(BaseModel):
 class InboundRouteBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     did_pattern: str = Field(..., min_length=1, max_length=100)
-    destination_type: str = Field(..., pattern="^(extension|queue|voicebot|hangup)$")
+    destination_type: str = Field(..., pattern="^(extension|queue|voicebot|time_condition|hangup)$")
     destination_value: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _destino_requerido(self):
+        if self.destination_type not in ("hangup",) and not self.destination_value:
+            raise ValueError("El destino es obligatorio salvo que el tipo sea 'colgar'")
+        return self
     priority: int = Field(default=10, ge=0, le=1000)
     enabled: bool = True
 
@@ -308,7 +314,7 @@ class InboundRouteCreate(InboundRouteBase):
 class InboundRouteUpdate(BaseModel):
     name: Optional[str] = None
     did_pattern: Optional[str] = None
-    destination_type: Optional[str] = Field(default=None, pattern="^(extension|queue|voicebot|hangup)$")
+    destination_type: Optional[str] = Field(default=None, pattern="^(extension|queue|voicebot|time_condition|hangup)$")
     destination_value: Optional[str] = None
     priority: Optional[int] = Field(default=None, ge=0, le=1000)
     enabled: Optional[bool] = None

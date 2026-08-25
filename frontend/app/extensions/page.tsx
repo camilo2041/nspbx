@@ -45,6 +45,7 @@ export default function ExtensionsPage() {
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Extension | null>(null);
   const [form, setForm] = useState(empty);
+  const [saving, setSaving] = useState(false);
   const [reloading, setReloading] = useState(false);
 
   const [callModal, setCallModal] = useState<Extension | null>(null);
@@ -88,6 +89,8 @@ export default function ExtensionsPage() {
   };
 
   const save = async () => {
+    if (saving) return; // doble clic creaba dos extensiones (y reescribía config)
+    setSaving(true);
     try {
       if (editing) {
         await api.put(`/api/extensions/${editing.id}`, form);
@@ -98,6 +101,8 @@ export default function ExtensionsPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -233,7 +238,9 @@ export default function ExtensionsPage() {
             <Button variant="secondary" onClick={() => setModal(false)}>
               Cancelar
             </Button>
-            <Button onClick={save}>{editing ? "Guardar" : "Crear"}</Button>
+            <Button onClick={save} loading={saving}>
+              {saving ? "Guardando…" : editing ? "Guardar" : "Crear"}
+            </Button>
           </>
         }
       >

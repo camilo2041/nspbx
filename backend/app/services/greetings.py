@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from app.core.config import settings
 
@@ -17,7 +18,14 @@ def _local_bots_dir() -> Path:
 
 
 def _key(bot_id: int, node_id: str | None) -> str:
-    return f"bot_{bot_id}" if not node_id else f"bot_{bot_id}_node_{node_id}"
+    if not node_id:
+        return f"bot_{bot_id}"
+    # El node_id viene del path de la URL y se usa como nombre de archivo:
+    # si se deja pasar tal cual, un "../../conf/x" escribiría FUERA de
+    # sounds/bots (ver auditoría de seguridad). Se queda solo con el
+    # basename y se reemplaza lo que no sea alfanumérico.
+    safe = re.sub(r"[^A-Za-z0-9_\-]", "_", Path(str(node_id)).name)
+    return f"bot_{bot_id}_node_{safe}"
 
 
 def save_audio(bot_id: int, filename: str, content: bytes, node_id: str | None = None) -> str:

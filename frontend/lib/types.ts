@@ -168,7 +168,7 @@ export interface InboundRoute {
   id: number;
   name: string;
   did_pattern: string;
-  destination_type: "extension" | "queue" | "voicebot" | "hangup";
+  destination_type: "extension" | "queue" | "voicebot" | "time_condition" | "hangup";
   destination_value: string | null;
   priority: number;
   enabled: boolean;

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # docstring; antes vivía acá y ese otro endpoint quedó sin protección.
 from app.core.auth import verificar_secreto_fs as _verificar_secreto
 from app.core.database import get_session
-from app.models import BlacklistNumber, Extension, InboundRoute, OutboundRoute, PriorityNumber, Queue, SystemSettings, Trunk, VoiceBot
+from app.models import BlacklistNumber, Extension, InboundRoute, OutboundRoute, PriorityNumber, Queue, SystemSettings, TimeCondition, TimeGroup, Trunk, VoiceBot
 from app.services.config_generator import build_dialplan_xml, build_directory_xml
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,10 @@ async def fs_dialplan(session: AsyncSession = Depends(get_session)):
     blacklist = blacklist_result.scalars().all()
     priority_result = await session.execute(select(PriorityNumber))
     priority_numbers = priority_result.scalars().all()
+    tc_result = await session.execute(select(TimeCondition).where(TimeCondition.enabled.is_(True)))
+    time_conditions = tc_result.scalars().all()
+    tg_result = await session.execute(select(TimeGroup))
+    time_groups = tg_result.scalars().all()
     settings_row = await session.get(SystemSettings, 1)
     record_all = bool(settings_row and settings_row.record_all_calls)
     max_call_minutes = settings_row.max_call_duration_minutes if settings_row else 60
@@ -59,6 +63,8 @@ async def fs_dialplan(session: AsyncSession = Depends(get_session)):
         blacklist=blacklist,
         priority_numbers=priority_numbers,
         priority_announce_text=priority_announce_text,
+        time_conditions=time_conditions,
+        time_groups=time_groups,
     )
     return Response(content=xml, media_type="text/xml")
 

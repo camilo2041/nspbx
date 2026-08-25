@@ -67,6 +67,7 @@ export default function VoicebotsPage() {
   const [error, setError] = useState("");
   const [modalError, setModalError] = useState("");
   const [modal, setModal] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<VoiceBot | null>(null);
   const [form, setForm] = useState(empty);
   const [menuRows, setMenuRows] = useState<MenuRow[]>([]);
@@ -155,6 +156,8 @@ export default function VoicebotsPage() {
   };
 
   const save = async () => {
+    if (saving) return; // doble clic duplicaba el PUT
+    setSaving(true);
     try {
       // Un bot con flujo visual (flow_json) NO usa el menú legado ni el
       // saludo de nivel-bot: eso vive en el editor de flujo. Guardar acá
@@ -177,6 +180,8 @@ export default function VoicebotsPage() {
       await closeModal();
     } catch (e) {
       setModalError(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -374,7 +379,9 @@ export default function VoicebotsPage() {
               <Button variant="secondary" onClick={closeModal}>
                 Cerrar
               </Button>
-              <Button onClick={save}>Guardar</Button>
+              <Button onClick={save} loading={saving}>
+                {saving ? "Guardando…" : "Guardar"}
+              </Button>
             </>
           ) : (
             <>

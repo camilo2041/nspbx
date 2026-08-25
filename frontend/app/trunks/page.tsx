@@ -51,6 +51,7 @@ export default function TrunksPage() {
   const [items, setItems] = useState<Trunk[]>([]);
   const [statuses, setStatuses] = useState<Record<number, TrunkStatus>>({});
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Trunk | null>(null);
@@ -116,6 +117,8 @@ export default function TrunksPage() {
   };
 
   const save = async () => {
+    if (saving) return; // doble clic creaba dos troncales (y registraba dos veces)
+    setSaving(true);
     try {
       const payload = {
         ...form,
@@ -132,6 +135,8 @@ export default function TrunksPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -246,7 +251,9 @@ export default function TrunksPage() {
             <Button variant="secondary" onClick={() => setModal(false)}>
               Cancelar
             </Button>
-            <Button onClick={save}>{editing ? "Guardar" : "Crear"}</Button>
+            <Button onClick={save} loading={saving}>
+              {saving ? "Guardando…" : editing ? "Guardar" : "Crear"}
+            </Button>
           </>
         }
       >

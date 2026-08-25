@@ -21,9 +21,9 @@ import {
   Tr,
 } from "@/components/ui";
 import { api } from "@/lib/api";
-import { Extension, InboundRoute, Queue, VoiceBot } from "@/lib/types";
+import { Extension, InboundRoute, Queue, TimeCondition, VoiceBot } from "@/lib/types";
 
-type DestType = "extension" | "queue" | "voicebot" | "hangup";
+type DestType = "extension" | "queue" | "voicebot" | "time_condition" | "hangup";
 
 const empty: Omit<InboundRoute, "id" | "created_at"> = {
   name: "",
@@ -39,6 +39,7 @@ export default function InboundRoutesPage() {
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
   const [bots, setBots] = useState<VoiceBot[]>([]);
+  const [timeConditions, setTimeConditions] = useState<TimeCondition[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -50,16 +51,18 @@ export default function InboundRoutesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [routes, exts, qs, vbots] = await Promise.all([
+      const [routes, exts, qs, vbots, tcs] = await Promise.all([
         api.get<InboundRoute[]>("/api/inbound-routes"),
         api.get<Extension[]>("/api/extensions"),
         api.get<Queue[]>("/api/queues"),
         api.get<VoiceBot[]>("/api/voicebots"),
+        api.get<TimeCondition[]>("/api/time-conditions"),
       ]);
       setItems(routes);
       setExtensions(exts);
       setQueues(qs);
       setBots(vbots);
+      setTimeConditions(tcs);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
@@ -91,6 +94,8 @@ export default function InboundRoutesPage() {
       return extensions.map((e) => ({ value: e.number, label: `${e.number} — ${e.caller_id_name || "sin nombre"}` }));
     if (type === "queue") return queues.map((q) => ({ value: q.extension, label: `${q.extension} — ${q.name}` }));
     if (type === "voicebot") return bots.map((b) => ({ value: `bot_${b.id}`, label: b.name }));
+    if (type === "time_condition")
+      return timeConditions.map((tc) => ({ value: String(tc.id), label: tc.name }));
     return [];
   };
 
@@ -261,6 +266,7 @@ export default function InboundRoutesPage() {
               { value: "extension", label: "Extensión" },
               { value: "queue", label: "Cola" },
               { value: "voicebot", label: "Voizbot" },
+              { value: "time_condition", label: "Condición de tiempo" },
               { value: "hangup", label: "Colgar" },
             ]}
           />
