@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Badge,
@@ -396,6 +396,25 @@ function LlamadasEnVivo() {
   const [channels, setChannels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [spyLoading, setSpyLoading] = useState<string | null>(null);
+  const [filtroTipo, setFiltroTipo] = useState("todas");
+  const [filtroItem, setFiltroItem] = useState("");
+
+  // El backend clasifica cada canal (tipo: cola/voizbot/extension/otro y
+  // filtro: el nombre/número puntual) — ver get_active_calls en calls.py.
+  const canalesFiltrados = useMemo(() => {
+    if (filtroTipo === "todas") return channels;
+    return channels.filter(
+      (c) => c.tipo === filtroTipo && (!filtroItem || c.filtro === filtroItem)
+    );
+  }, [channels, filtroTipo, filtroItem]);
+
+  const opcionesItem = useMemo(() => {
+    if (filtroTipo === "todas") return [];
+    const set = new Set(
+      channels.filter((c) => c.tipo === filtroTipo && c.filtro).map((c) => c.filtro)
+    );
+    return [...set].sort().map((v) => ({ value: v, label: v }));
+  }, [channels, filtroTipo]);
 
   const cargarCanales = async () => {
     try {
@@ -431,12 +450,41 @@ function LlamadasEnVivo() {
       <div className="p-4 space-y-4">
         <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
           <div>
-            <h3 className="text-sm font-bold text-white">Canales SIP Activos en Tiempo Real ({channels.length})</h3>
+            <h3 className="text-sm font-bold text-white">Canales SIP Activos en Tiempo Real ({canalesFiltrados.length})</h3>
             <p className="text-xs text-zinc-400">Supervisión en vivo estilo Vicidial sobre llamadas en curso</p>
           </div>
           <span className="text-xs font-mono text-emerald-400 animate-pulse flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
             Monitoreando cada 3s
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            label=""
+            value={filtroTipo}
+            onChange={(v) => {
+              setFiltroTipo(v);
+              setFiltroItem("");
+            }}
+            options={[
+              { value: "todas", label: "Todas las llamadas" },
+              { value: "cola", label: "Por cola" },
+              { value: "voizbot", label: "Por voizbot" },
+              { value: "extension", label: "Por extensión" },
+            ]}
+          />
+          {filtroTipo !== "todas" && (
+            <Select
+              label=""
+              value={filtroItem}
+              onChange={setFiltroItem}
+              placeholder="— Todas —"
+              options={opcionesItem}
+            />
+          )}
+          <span className="text-xs text-zinc-400">
+            {canalesFiltrados.length} de {channels.length}
           </span>
         </div>
 
@@ -450,6 +498,7 @@ function LlamadasEnVivo() {
               <thead className="border-b border-zinc-800 bg-zinc-900/50 text-xs uppercase text-zinc-400">
                 <tr>
                   <th className="px-4 py-3">Dirección</th>
+                  <th className="px-4 py-3">Tipo</th>
                   <th className="px-4 py-3">Origen (Caller ID)</th>
                   <th className="px-4 py-3">Destino</th>
                   <th className="px-4 py-3">Estado</th>
@@ -458,11 +507,26 @@ function LlamadasEnVivo() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {channels.map((ch, idx) => (
+                {canalesFiltrados.map((ch, idx) => (
                   <tr key={ch.uuid || idx} className="hover:bg-zinc-800/30">
                     <td className="px-4 py-3">
                       <Badge color={ch.direction === "inbound" ? "blue" : "violet"}>
                         {ch.direction === "inbound" ? "Entrante" : "Saliente"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        color={
+                          ch.tipo === "cola" ? "blue" : ch.tipo === "voizbot" ? "violet" : ch.tipo === "extension" ? "green" : "slate"
+                        }
+                      >
+                        {ch.tipo === "cola"
+                          ? `Cola · ${ch.filtro}`
+                          : ch.tipo === "voizbot"
+                            ? "Voizbot"
+                            : ch.tipo === "extension"
+                              ? `Ext · ${ch.filtro}`
+                              : "Otro"}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 font-mono font-medium text-white">

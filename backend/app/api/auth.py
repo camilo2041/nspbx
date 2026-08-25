@@ -2,9 +2,11 @@
 
 import asyncio
 import logging
+import time
+from collections import defaultdict
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +23,33 @@ from app.services import esl, queues_sync, turn
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Rate-limit del login en memoria: por IP, N intentos fallidos en M minutos.
+# Suficiente para frenar fuerza bruta sin depender de infraestructura extra;
+# al reiniciar el backend se resetea (aceptable para este control).
+_LOGIN_VENTANA_SEG = 300
+_LOGIN_MAX_FALLIDOS = 10
+_LOGIN_FALLIDOS: dict[str, list[float]] = defaultdict(list)
+
+
+def _cliente_ip(request: Request) -> str:
+    # Detrás de Traefik el origen real llega en X-Forwarded-For; si el
+    # proxy no lo reescribe, request.client ya es la IP del proxy (menos
+    # útil pero no rompe nada).
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def _controlar_intentos(ip: str) -> None:
+    ahora = time.time()
+    _LOGIN_FALLIDOS[ip] = [t for t in _LOGIN_FALLIDOS[ip] if ahora - t < _LOGIN_VENTANA_SEG]
+    if len(_LOGIN_FALLIDOS[ip]) >= _LOGIN_MAX_FALLIDOS:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos fallidos. Esperá unos minutos antes de reintentar.",
+        )
 
 
 def usuario_out(u: User) -> UserOut:
@@ -40,7 +69,9 @@ def _sesion(u: User) -> SesionOut:
 
 
 @router.post("/login", response_model=SesionOut)
-async def login(payload: LoginRequest, session: AsyncSession = Depends(get_session)):
+async def login(payload: LoginRequest, request: Request, session: AsyncSession = Depends(get_session)):
+    ip = _cliente_ip(request)
+    _controlar_intentos(ip)
     usuario = (
         (await session.execute(select(User).where(User.username == payload.username.strip().lower())))
         .unique()
@@ -55,11 +86,13 @@ async def login(payload: LoginRequest, session: AsyncSession = Depends(get_sessi
     correcta = await asyncio.to_thread(verificar_password, payload.password, hash_referencia)
 
     if not usuario or not correcta:
+        _LOGIN_FALLIDOS[ip].append(time.time())
         logger.info("Intento de acceso fallido para '%s'", payload.username)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario o contraseña incorrectos")
     if not usuario.enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta cuenta está desactivada")
 
+    _LOGIN_FALLIDOS.pop(ip, None)  # logueo correcto: se limpia el contador
     usuario.last_login_at = datetime.utcnow()
     await session.commit()
     await session.refresh(usuario)

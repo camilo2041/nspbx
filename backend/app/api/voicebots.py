@@ -21,6 +21,19 @@ from app.services.flow_engine import legacy_flow_from_bot, parse_flow
 
 router = APIRouter(prefix="/api/voicebots", tags=["voicebots"])
 
+# Tope de audios subidos: sin esto un archivo enorme llena el disco (ver
+# auditoría de seguridad). 25 MB alcanza de sobra para un saludo o un nodo.
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+async def _leer_audio_con_tope(file: UploadFile) -> bytes:
+    contenido = await file.read()
+    if not contenido:
+        raise HTTPException(status_code=400, detail="Archivo vacío")
+    if len(contenido) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=400, detail="El archivo supera los 25 MB")
+    return contenido
+
 
 async def _get_elevenlabs_key(session: AsyncSession) -> str:
     row = await session.get(SystemSettings, 1)
@@ -158,9 +171,7 @@ async def upload_node_audio(bot_id: int, node_id: str, file: UploadFile, session
     bot = await session.get(VoiceBot, bot_id)
     if not bot:
         raise HTTPException(status_code=404, detail="Bot no encontrado")
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Archivo vacío")
+    content = await _leer_audio_con_tope(file)
     try:
         path = greetings.save_audio(bot_id, file.filename or "audio.wav", content, node_id=node_id)
     except ValueError as exc:
@@ -199,9 +210,7 @@ async def upload_greeting(
     bot = await session.get(VoiceBot, bot_id)
     if not bot:
         raise HTTPException(status_code=404, detail="Bot no encontrado")
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Archivo vacío")
+    content = await _leer_audio_con_tope(file)
     try:
         path = greetings.save_greeting(bot_id, file.filename or "greeting.wav", content)
     except ValueError as exc:

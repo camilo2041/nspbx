@@ -461,7 +461,7 @@
 
      default: tlsv1,tlsv1.1,tlsv1.2
   -->
-  <X-PRE-PROCESS cmd="set" data="sip_tls_version=tlsv1,tlsv1.1,tlsv1.2"/>
+  <X-PRE-PROCESS cmd="set" data="sip_tls_version=tlsv1.2,tlsv1.3"/>
 
   <!--
      TLS cipher suite: default ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH

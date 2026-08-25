@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button, Card, Modal, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 import { BlacklistNumber } from "@/lib/types";
+import { fechaLocal } from "@/lib/dates";
 
 export default function BlacklistPage() {
   const [items, setItems] = useState<BlacklistNumber[]>([]);
@@ -100,9 +101,7 @@ export default function BlacklistPage() {
                   <tr key={item.id} className="hover:bg-zinc-800/30">
                     <td className="px-4 py-3 font-mono font-bold text-red-400">{item.phone}</td>
                     <td className="px-4 py-3 text-zinc-300">{item.note || "-"}</td>
-                    <td className="px-4 py-3 text-xs text-zinc-500">
-                      {new Date(item.created_at).toLocaleString()}
-                    </td>
+                    <td className="px-4 py-3 text-xs text-zinc-500">{fechaLocal(item.created_at)}</td>
                     <td className="px-4 py-3 text-right">
                       <Button size="sm" variant="danger" onClick={() => eliminar(item.id)}>
                         Desbloquear

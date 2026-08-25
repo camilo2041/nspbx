@@ -193,7 +193,7 @@ export default function ExtensionsPage() {
                 </Td>
                 <Td>{ext.caller_id_name || "—"}</Td>
                 <Td mono muted>
-                  {ext.password}
+                  {ext.password ? "••••••••" : "—"}
                 </Td>
                 <Td>{ext.voicemail ? <Badge color="blue">Sí</Badge> : <Badge color="slate">No</Badge>}</Td>
                 <Td>
@@ -246,7 +246,13 @@ export default function ExtensionsPage() {
       >
         <div className="space-y-4">
           <Input label="Número" value={form.number} onChange={(v) => setForm({ ...form, number: v })} required mono />
-          <Input label="Password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} required />
+          <Input
+            label="Password"
+            type="password"
+            value={form.password}
+            onChange={(v) => setForm({ ...form, password: v })}
+            required
+          />
           <Input
             label="Nombre (Caller ID)"
             value={form.caller_id_name ?? ""}

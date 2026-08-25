@@ -19,6 +19,7 @@ import {
   Badge,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { fechaLocal } from "@/lib/dates";
 
 const POR_PAGINA = 25;
 
@@ -483,7 +484,7 @@ export default function AiUsagePage() {
                 {calls.map((c, i) => (
                   <Tr key={c.id} delay={i * 30}>
                     <Td>{c.phone ?? "—"}</Td>
-                    <Td>{new Date(c.started_at).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</Td>
+                    <Td>{fechaLocal(c.started_at)}</Td>
                     <Td>{dur(c.duration_seconds)}</Td>
                     <Td>{c.turns}</Td>
                     <Td align="right">

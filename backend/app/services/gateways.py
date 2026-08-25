@@ -60,6 +60,13 @@ def write_gateway_file(trunk) -> Path:
     lines.append('  </gateway>')
     lines.append('</include>')
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # El archivo tiene la contraseña del proveedor en claro: 600 para que
+    # solo el dueño (root del contenedor) lo lea — ver auditoría de
+    # seguridad (antes quedaba 644 según el umask).
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
     logger.info("Gateway %s escrito en %s (register=%s)", trunk.name, path, should_register)
     return path
 

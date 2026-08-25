@@ -288,7 +288,7 @@ export default function TrunksPage() {
             onChange={(v) => setForm({ ...form, username: v })}
             hint="Vacío = autenticación por IP (sin registro)"
           />
-          <Input label="Password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
+          <Input label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
           <Input label="From domain" value={form.from_domain} onChange={(v) => setForm({ ...form, from_domain: v })} />
           <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 px-3.5 py-2.5">
             <span className="text-sm text-fg-soft">

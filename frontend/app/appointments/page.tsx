@@ -26,6 +26,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Appointment, GestionRow } from "@/lib/types";
+import { fechaLocal } from "@/lib/dates";
 
 const gestionLabel: Record<GestionRow["action"], { label: string; color: string }> = {
   confirmada: { label: "Confirmó", color: "green" },
@@ -211,7 +212,7 @@ export default function AppointmentsPage() {
               <Table head={["Cuándo llamó", "Teléfono", "Paciente", "Gestión", "Cita"]}>
                 {gestion.map((g, i) => (
                   <Tr key={g.id} delay={i * 35}>
-                    <Td muted>{new Date(g.called_at).toLocaleString()}</Td>
+                    <Td muted>{fechaLocal(g.called_at)}</Td>
                     <Td mono muted>{g.phone ?? "—"}</Td>
                     <Td strong>{g.patient_name ?? "—"}</Td>
                     <Td>

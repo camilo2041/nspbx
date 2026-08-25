@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Card, CardHeader, ErrorBanner, PageHeader, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
+import { fechaLocal } from "@/lib/dates";
 
 // Colores de la paleta del sistema (ver components/ui.tsx)
 const C = {
@@ -523,9 +524,7 @@ export default function CallCenterPage() {
                 <tr key={i} className="text-xs">
                   <td className="px-5 py-2.5 font-mono text-fg-soft">{c.caller || "—"}</td>
                   <td className="px-5 py-2.5 font-mono text-fg-soft">{c.callee || "—"}</td>
-                  <td className="px-5 py-2.5 text-muted">
-                    {c.started_at ? new Date(c.started_at).toLocaleString() : "—"}
-                  </td>
+                  <td className="px-5 py-2.5 text-muted">{fechaLocal(c.started_at)}</td>
                   <td className="px-5 py-2.5 text-right tabular-nums">
                     <Badge color="indigo">{fmtSec(c.billsec)}</Badge>
                   </td>

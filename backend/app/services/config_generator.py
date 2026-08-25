@@ -638,7 +638,23 @@ def _append_custom_outbound_routes(context: ET.Element, outbound_routes: list | 
             ET.SubElement(condition, "action", attrib={"application": "set", "data": f"effective_caller_id_number={cid}"})
             ET.SubElement(condition, "action", attrib={"application": "set", "data": f"outbound_caller_id_number={cid}"})
 
-        destinos = "|".join(f"sofia/gateway/{t.name}/$1" if "(" in patron else f"sofia/gateway/{t.name}/${{destination_number}}" for t in cadena)
+        # El número que se marca: un grupo de captura en el patrón define el
+        # número final ($1, comportamiento histórico), o si no se transforma
+        # con strip_digits/prepend_digits (${destination_number:N} descarta
+        # los primeros N dígitos; el prefijo se antepone).
+        strip = int(getattr(route, "strip_digits", 0) or 0)
+        prepend = str(getattr(route, "prepend_digits", "") or "").strip()
+        if "(" in patron:
+            num_expr = "$1"
+        elif strip or prepend:
+            base = f"${{destination_number:{strip}}}" if strip else "${destination_number}"
+            num_expr = f"{prepend}{base}"
+            ET.SubElement(condition, "action", attrib={"application": "set", "data": f"outbound_dial={num_expr}"})
+            num_expr = "${outbound_dial}"
+        else:
+            num_expr = "${destination_number}"
+
+        destinos = "|".join(f"sofia/gateway/{t.name}/{num_expr}" for t in cadena)
         ET.SubElement(condition, "action", attrib={"application": "bridge", "data": destinos})
 
 

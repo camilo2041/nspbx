@@ -18,6 +18,8 @@ export default function OutboundRoutesPage() {
   const [formPattern, setFormPattern] = useState("");
   const [formTrunkId, setFormTrunkId] = useState<number | "">("");
   const [formPriority, setFormPriority] = useState<number>(10);
+  const [formStrip, setFormStrip] = useState<number>(0);
+  const [formPrepend, setFormPrepend] = useState("");
   const [saving, setSaving] = useState(false);
 
   const cargarDatos = async () => {
@@ -47,6 +49,8 @@ export default function OutboundRoutesPage() {
     setFormPattern("^9(\\d+)$");
     setFormTrunkId(trunks.length > 0 ? trunks[0].id : "");
     setFormPriority(10);
+    setFormStrip(0);
+    setFormPrepend("");
     setShowModal(true);
   };
 
@@ -56,6 +60,8 @@ export default function OutboundRoutesPage() {
     setFormPattern(route.match_pattern);
     setFormTrunkId(route.trunk_id || "");
     setFormPriority(route.priority);
+    setFormStrip(route.strip_digits || 0);
+    setFormPrepend(route.prepend_digits ?? "");
     setShowModal(true);
   };
 
@@ -68,6 +74,8 @@ export default function OutboundRoutesPage() {
         match_pattern: formPattern,
         trunk_id: formTrunkId === "" ? null : Number(formTrunkId),
         priority: Number(formPriority),
+        strip_digits: Number(formStrip) || 0,
+        prepend_digits: formPrepend || null,
       };
       if (editing) {
         await api.put(`/api/outbound-routes/${editing.id}`, payload);
@@ -207,6 +215,35 @@ export default function OutboundRoutesPage() {
               <span className="text-[11px] text-zinc-500 mt-1 block">
                 Expresión regular que debe coincidir con los dígitos marcados por el usuario.
               </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Quitar dígitos iniciales</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={formStrip}
+                  onChange={(e) => setFormStrip(Number(e.target.value))}
+                  className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                />
+                <span className="text-[11px] text-zinc-500 mt-1 block">
+                  Se descartan del número marcado antes de salir (ej. el 9 de la central).
+                </span>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Prefijo a anteponer</label>
+                <input
+                  type="text"
+                  value={formPrepend}
+                  onChange={(e) => setFormPrepend(e.target.value)}
+                  placeholder="ej. 0057"
+                  className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                />
+                <span className="text-[11px] text-zinc-500 mt-1 block">
+                  Se agrega antes del número (alternativa al grupo de captura).
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

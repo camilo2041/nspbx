@@ -67,7 +67,22 @@ export function getToken(): string | null {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+
+  // Timeout: si el backend cuelga, que no quede la UI en "Cargando…"
+  // infinito (ver auditoría de frontend). Se aborta a los 30s.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...options, headers, signal: controller.signal });
+  } catch (e) {
+    if (controller.signal.aborted) {
+      throw new ApiError(0, "La petición tardó demasiado. Intentalo de nuevo.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 
   // Token vencido o cuenta desactivada a media jornada: se avisa para que
   // la aplicación devuelva a la pantalla de entrada en vez de dejar

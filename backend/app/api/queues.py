@@ -179,6 +179,8 @@ async def upload_queue_announce(queue_id: int, file: UploadFile, session: AsyncS
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Archivo vacío")
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="El archivo supera los 25 MB")
     try:
         path = greetings.save_queue_announce(queue.id, file.filename or "anuncio.wav", content)
     except ValueError as exc:

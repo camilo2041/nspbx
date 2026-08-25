@@ -126,6 +126,8 @@ async def upload_hold_music(file: UploadFile):
     contenido = await file.read()
     if not contenido:
         raise HTTPException(status_code=400, detail="Archivo vacío")
+    if len(contenido) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="El archivo supera los 25 MB")
     MUSIC_DIR.mkdir(parents=True, exist_ok=True)
     destino = MUSIC_DIR / nombre
     destino.write_bytes(contenido)
