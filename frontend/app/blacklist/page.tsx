@@ -73,22 +73,22 @@ export default function BlacklistPage() {
       />
 
       {error && (
-        <Card className="mb-6 border-red-500/20 bg-red-500/10 p-4 text-red-400">
+        <Card className="mb-6 border-danger/25 bg-danger-soft p-4 text-danger-text">
           {error}
         </Card>
       )}
 
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-zinc-400">Cargando lista negra...</div>
+          <div className="p-8 text-center text-muted">Cargando lista negra...</div>
         ) : items.length === 0 ? (
-          <div className="p-8 text-center text-zinc-400">
+          <div className="p-8 text-center text-muted">
             No hay números bloqueados en la lista negra.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-zinc-300">
-              <thead className="border-b border-zinc-800 bg-zinc-900/50 text-xs uppercase text-zinc-400">
+            <table className="w-full text-left text-sm text-fg-soft">
+              <thead className="border-b border-line bg-surface-3 text-xs uppercase text-muted">
                 <tr>
                   <th className="px-4 py-3">Número Bloqueado</th>
                   <th className="px-4 py-3">Motivo / Nota</th>
@@ -96,12 +96,12 @@ export default function BlacklistPage() {
                   <th className="px-4 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
+              <tbody className="divide-y divide-line">
                 {items.map((item) => (
-                  <tr key={item.id} className="hover:bg-zinc-800/30">
-                    <td className="px-4 py-3 font-mono font-bold text-red-400">{item.phone}</td>
-                    <td className="px-4 py-3 text-zinc-300">{item.note || "-"}</td>
-                    <td className="px-4 py-3 text-xs text-zinc-500">{fechaLocal(item.created_at)}</td>
+                  <tr key={item.id} className="hover:bg-surface-3">
+                    <td className="px-4 py-3 font-mono font-bold text-danger-text">{item.phone}</td>
+                    <td className="px-4 py-3 text-fg-soft">{item.note || "-"}</td>
+                    <td className="px-4 py-3 text-xs text-faint">{fechaLocal(item.created_at)}</td>
                     <td className="px-4 py-3 text-right">
                       <Button size="sm" variant="danger" onClick={() => eliminar(item.id)}>
                         Desbloquear
@@ -123,7 +123,7 @@ export default function BlacklistPage() {
         >
           <form onSubmit={agregar} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">
+              <label className="block text-xs font-medium text-muted mb-1">
                 Número de Teléfono
               </label>
               <input
@@ -132,12 +132,12 @@ export default function BlacklistPage() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="ej: 573001234567"
-                className="w-full font-mono rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                className="w-full font-mono rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg focus:outline-none focus:border-red-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">
+              <label className="block text-xs font-medium text-muted mb-1">
                 Nota / Motivo (opcional)
               </label>
               <input
@@ -145,7 +145,7 @@ export default function BlacklistPage() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="ej: Spam comercial / Cobros no solicitados"
-                className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+                className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg focus:outline-none focus:border-red-500"
               />
             </div>
 

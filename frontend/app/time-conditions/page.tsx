@@ -141,7 +141,7 @@ export default function TimeConditionsPage() {
       />
 
       {error && (
-        <Card className="mb-6 border-red-500/20 bg-red-500/10 p-4 text-red-400">
+        <Card className="mb-6 border-danger/25 bg-danger-soft p-4 text-danger-text">
           {error}
         </Card>
       )}
@@ -149,19 +149,19 @@ export default function TimeConditionsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Grupos de Horarios */}
         <Card>
-          <h3 className="text-base font-semibold text-white mb-4">Grupos de Horarios</h3>
+          <h3 className="text-base font-semibold text-fg mb-4">Grupos de Horarios</h3>
           {timeGroups.length === 0 ? (
-            <p className="text-sm text-zinc-400">No hay grupos de horarios definidos.</p>
+            <p className="text-sm text-muted">No hay grupos de horarios definidos.</p>
           ) : (
             <div className="space-y-3">
               {timeGroups.map((g) => (
                 <div
                   key={g.id}
-                  className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 flex justify-between items-center"
+                  className="rounded-lg border border-line bg-surface-3 p-4 flex justify-between items-center"
                 >
                   <div>
-                    <span className="font-medium text-white block">{g.name}</span>
-                    <pre className="text-[11px] text-amber-400 font-mono mt-1">
+                    <span className="font-medium text-fg block">{g.name}</span>
+                    <pre className="text-[11px] text-warn-text font-mono mt-1">
                       {g.schedule_json}
                     </pre>
                   </div>
@@ -173,9 +173,9 @@ export default function TimeConditionsPage() {
 
         {/* Condiciones de Tiempo */}
         <Card>
-          <h3 className="text-base font-semibold text-white mb-4">Condiciones de Tiempo</h3>
+          <h3 className="text-base font-semibold text-fg mb-4">Condiciones de Tiempo</h3>
           {conditions.length === 0 ? (
-            <p className="text-sm text-zinc-400">No hay condiciones de tiempo configuradas.</p>
+            <p className="text-sm text-muted">No hay condiciones de tiempo configuradas.</p>
           ) : (
             <div className="space-y-3">
               {conditions.map((c) => {
@@ -183,18 +183,18 @@ export default function TimeConditionsPage() {
                 return (
                   <div
                     key={c.id}
-                    className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 space-y-2"
+                    className="rounded-lg border border-line bg-surface-3 p-4 space-y-2"
                   >
                     <div className="flex justify-between items-center">
-                      <span className="font-semibold text-white">{c.name}</span>
+                      <span className="font-semibold text-fg">{c.name}</span>
                       <Badge color="blue">{group?.name || "Sin Grupo"}</Badge>
                     </div>
                     <div className="text-xs space-y-1">
-                      <div className="text-emerald-400">
-                        ✓ En Horario Hábil: <span className="font-mono text-white">{c.match_destination_type} ({c.match_destination_value})</span>
+                      <div className="text-ok-text">
+                        ✓ En Horario Hábil: <span className="font-mono text-fg">{c.match_destination_type} ({c.match_destination_value})</span>
                       </div>
-                      <div className="text-red-400">
-                        ✗ Fuera de Horario: <span className="font-mono text-white">{c.nomatch_destination_type} ({c.nomatch_destination_value})</span>
+                      <div className="text-danger-text">
+                        ✗ Fuera de Horario: <span className="font-mono text-fg">{c.nomatch_destination_type} ({c.nomatch_destination_value})</span>
                       </div>
                     </div>
                   </div>
@@ -214,24 +214,24 @@ export default function TimeConditionsPage() {
         >
           <form onSubmit={guardarGrupo} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Nombre</label>
+              <label className="block text-xs font-medium text-muted mb-1">Nombre</label>
               <input
                 type="text"
                 required
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="ej: Horario Oficina L-V"
-                className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white"
+                className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Reglas (JSON)</label>
+              <label className="block text-xs font-medium text-muted mb-1">Reglas (JSON)</label>
               <textarea
                 rows={4}
                 required
                 value={groupSchedule}
                 onChange={(e) => setGroupSchedule(e.target.value)}
-                className="w-full font-mono text-xs rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-white"
+                className="w-full font-mono text-xs rounded-lg bg-surface-2 border border-line px-3 py-2 text-fg"
               />
             </div>
             <div className="flex justify-end space-x-2 pt-4">
@@ -255,24 +255,24 @@ export default function TimeConditionsPage() {
         >
           <form onSubmit={guardarCondicion} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Nombre</label>
+              <label className="block text-xs font-medium text-muted mb-1">Nombre</label>
               <input
                 type="text"
                 required
                 value={condName}
                 onChange={(e) => setCondName(e.target.value)}
                 placeholder="ej: Horario Atención Principal"
-                className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white"
+                className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Grupo de Horario</label>
+              <label className="block text-xs font-medium text-muted mb-1">Grupo de Horario</label>
               <select
                 required
                 value={condGroupId}
                 onChange={(e) => setCondGroupId(Number(e.target.value))}
-                className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white"
+                className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg"
               >
                 <option value="">Seleccione grupo...</option>
                 {timeGroups.map((g) => (
@@ -283,15 +283,15 @@ export default function TimeConditionsPage() {
               </select>
             </div>
 
-            <div className="border-t border-zinc-800 pt-3">
-              <span className="text-xs font-semibold text-emerald-400 block mb-2">
+            <div className="border-t border-line pt-3">
+              <span className="text-xs font-semibold text-ok-text block mb-2">
                 Destino en Horario Hábil (Coincidencia)
               </span>
               <div className="grid grid-cols-2 gap-2">
                 <select
                   value={matchType}
                   onChange={(e) => setMatchType(e.target.value as any)}
-                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white"
+                  className="rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg"
                 >
                   <option value="extension">Extensión</option>
                   <option value="queue">Cola</option>
@@ -303,20 +303,20 @@ export default function TimeConditionsPage() {
                   placeholder="Valor o número"
                   value={matchVal}
                   onChange={(e) => setMatchVal(e.target.value)}
-                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white"
+                  className="rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg"
                 />
               </div>
             </div>
 
-            <div className="border-t border-zinc-800 pt-3">
-              <span className="text-xs font-semibold text-red-400 block mb-2">
+            <div className="border-t border-line pt-3">
+              <span className="text-xs font-semibold text-danger-text block mb-2">
                 Destino Fuera de Horario (Sin coincidencia)
               </span>
               <div className="grid grid-cols-2 gap-2">
                 <select
                   value={noMatchType}
                   onChange={(e) => setNoMatchType(e.target.value as any)}
-                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white"
+                  className="rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg"
                 >
                   <option value="extension">Extensión</option>
                   <option value="queue">Cola</option>
@@ -328,7 +328,7 @@ export default function TimeConditionsPage() {
                   placeholder="Valor o número"
                   value={noMatchVal}
                   onChange={(e) => setNoMatchVal(e.target.value)}
-                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white"
+                  className="rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg"
                 />
               </div>
             </div>

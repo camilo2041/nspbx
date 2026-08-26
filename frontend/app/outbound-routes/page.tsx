@@ -119,22 +119,22 @@ export default function OutboundRoutesPage() {
       />
 
       {error && (
-        <Card className="mb-6 border-red-500/20 bg-red-500/10 p-4 text-red-400">
+        <Card className="mb-6 border-danger/25 bg-danger-soft p-4 text-danger-text">
           {error}
         </Card>
       )}
 
       <Card>
         {loading ? (
-          <div className="p-8 text-center text-zinc-400">Cargando rutas salientes...</div>
+          <div className="p-8 text-center text-muted">Cargando rutas salientes...</div>
         ) : routes.length === 0 ? (
-          <div className="p-8 text-center text-zinc-400">
+          <div className="p-8 text-center text-muted">
             No hay rutas salientes configuradas. Se utiliza la cadena de troncales por defecto.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-zinc-300">
-              <thead className="border-b border-zinc-800 bg-zinc-900/50 text-xs uppercase text-zinc-400">
+            <table className="w-full text-left text-sm text-fg-soft">
+              <thead className="border-b border-line bg-surface-3 text-xs uppercase text-muted">
                 <tr>
                   <th className="px-4 py-3">Prioridad</th>
                   <th className="px-4 py-3">Nombre</th>
@@ -144,19 +144,19 @@ export default function OutboundRoutesPage() {
                   <th className="px-4 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
+              <tbody className="divide-y divide-line">
                 {routes.map((r) => {
                   const trunk = trunks.find((t) => t.id === r.trunk_id);
                   return (
-                    <tr key={r.id} className="hover:bg-zinc-800/30">
-                      <td className="px-4 py-3 font-semibold text-amber-400">{r.priority}</td>
-                      <td className="px-4 py-3 font-medium text-white">{r.name}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-sky-400">{r.match_pattern}</td>
+                    <tr key={r.id} className="hover:bg-surface-3">
+                      <td className="px-4 py-3 font-semibold text-warn-text">{r.priority}</td>
+                      <td className="px-4 py-3 font-medium text-fg">{r.name}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-info-text">{r.match_pattern}</td>
                       <td className="px-4 py-3">
                         {trunk ? (
-                          <span className="text-zinc-200">{trunk.name}</span>
+                          <span className="text-fg-soft">{trunk.name}</span>
                         ) : (
-                          <span className="text-zinc-500">Auto (Failover)</span>
+                          <span className="text-faint">Auto (Failover)</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -191,56 +191,56 @@ export default function OutboundRoutesPage() {
         >
           <form onSubmit={guardar} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Nombre</label>
+              <label className="block text-xs font-medium text-muted mb-1">Nombre</label>
               <input
                 type="text"
                 required
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
                 placeholder="ej: Llamadas a Móviles"
-                className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg focus:outline-none focus:border-amber-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Patrón Regex de Marcado</label>
+              <label className="block text-xs font-medium text-muted mb-1">Patrón Regex de Marcado</label>
               <input
                 type="text"
                 required
                 value={formPattern}
                 onChange={(e) => setFormPattern(e.target.value)}
                 placeholder="ej: ^9(\d+)$ o ^(3\d{9})$"
-                className="w-full font-mono rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                className="w-full font-mono rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg focus:outline-none focus:border-amber-500"
               />
-              <span className="text-[11px] text-zinc-500 mt-1 block">
+              <span className="text-[11px] text-faint mt-1 block">
                 Expresión regular que debe coincidir con los dígitos marcados por el usuario.
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Quitar dígitos iniciales</label>
+                <label className="block text-xs font-medium text-muted mb-1">Quitar dígitos iniciales</label>
                 <input
                   type="number"
                   min={0}
                   value={formStrip}
                   onChange={(e) => setFormStrip(Number(e.target.value))}
-                  className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg focus:outline-none focus:border-amber-500"
                 />
-                <span className="text-[11px] text-zinc-500 mt-1 block">
+                <span className="text-[11px] text-faint mt-1 block">
                   Se descartan del número marcado antes de salir (ej. el 9 de la central).
                 </span>
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Prefijo a anteponer</label>
+                <label className="block text-xs font-medium text-muted mb-1">Prefijo a anteponer</label>
                 <input
                   type="text"
                   value={formPrepend}
                   onChange={(e) => setFormPrepend(e.target.value)}
                   placeholder="ej. 0057"
-                  className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg focus:outline-none focus:border-amber-500"
                 />
-                <span className="text-[11px] text-zinc-500 mt-1 block">
+                <span className="text-[11px] text-faint mt-1 block">
                   Se agrega antes del número (alternativa al grupo de captura).
                 </span>
               </div>
@@ -248,11 +248,11 @@ export default function OutboundRoutesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Troncal Preferida</label>
+                <label className="block text-xs font-medium text-muted mb-1">Troncal Preferida</label>
                 <select
                   value={formTrunkId}
                   onChange={(e) => setFormTrunkId(e.target.value === "" ? "" : Number(e.target.value))}
-                  className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg focus:outline-none focus:border-amber-500"
                 >
                   <option value="">Todas (Cadena de Failover)</option>
                   {trunks.map((t) => (
@@ -264,7 +264,7 @@ export default function OutboundRoutesPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Prioridad (menor = primero)</label>
+                <label className="block text-xs font-medium text-muted mb-1">Prioridad (menor = primero)</label>
                 <input
                   type="number"
                   required
@@ -272,7 +272,7 @@ export default function OutboundRoutesPage() {
                   max={1000}
                   value={formPriority}
                   onChange={(e) => setFormPriority(Number(e.target.value))}
-                  className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full rounded-lg bg-surface-2 border border-line px-3 py-2 text-sm text-fg focus:outline-none focus:border-amber-500"
                 />
               </div>
             </div>

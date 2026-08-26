@@ -448,12 +448,12 @@ function LlamadasEnVivo() {
   return (
     <Card>
       <div className="p-4 space-y-4">
-        <div className="flex justify-between items-center border-b border-zinc-800 pb-3">
+        <div className="flex justify-between items-center border-b border-line pb-3">
           <div>
-            <h3 className="text-sm font-bold text-white">Canales SIP Activos en Tiempo Real ({canalesFiltrados.length})</h3>
-            <p className="text-xs text-zinc-400">Supervisión en vivo estilo Vicidial sobre llamadas en curso</p>
+            <h3 className="text-sm font-bold text-fg">Canales SIP Activos en Tiempo Real ({canalesFiltrados.length})</h3>
+            <p className="text-xs text-muted">Supervisión en vivo estilo Vicidial sobre llamadas en curso</p>
           </div>
-          <span className="text-xs font-mono text-emerald-400 animate-pulse flex items-center gap-1.5">
+          <span className="text-xs font-mono text-ok-text animate-pulse flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
             Monitoreando cada 3s
           </span>
@@ -483,19 +483,19 @@ function LlamadasEnVivo() {
               options={opcionesItem}
             />
           )}
-          <span className="text-xs text-zinc-400">
+          <span className="text-xs text-muted">
             {canalesFiltrados.length} de {channels.length}
           </span>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-zinc-400">Cargando canales activos...</div>
+          <div className="p-8 text-center text-muted">Cargando canales activos...</div>
         ) : channels.length === 0 ? (
-          <div className="p-8 text-center text-zinc-400">No hay llamadas activas en este momento.</div>
+          <div className="p-8 text-center text-muted">No hay llamadas activas en este momento.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-zinc-300">
-              <thead className="border-b border-zinc-800 bg-zinc-900/50 text-xs uppercase text-zinc-400">
+            <table className="w-full text-left text-sm text-fg-soft">
+              <thead className="border-b border-line bg-surface-3 text-xs uppercase text-muted">
                 <tr>
                   <th className="px-4 py-3">Dirección</th>
                   <th className="px-4 py-3">Tipo</th>
@@ -506,9 +506,9 @@ function LlamadasEnVivo() {
                   <th className="px-4 py-3 text-right">Supervisión (Vicidial)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
+              <tbody className="divide-y divide-line">
                 {canalesFiltrados.map((ch, idx) => (
-                  <tr key={ch.uuid || idx} className="hover:bg-zinc-800/30">
+                  <tr key={ch.uuid || idx} className="hover:bg-surface-3">
                     <td className="px-4 py-3">
                       <Badge color={ch.direction === "inbound" ? "blue" : "violet"}>
                         {ch.direction === "inbound" ? "Entrante" : "Saliente"}
@@ -529,18 +529,18 @@ function LlamadasEnVivo() {
                               : "Otro"}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 font-mono font-medium text-white">
+                    <td className="px-4 py-3 font-mono font-medium text-fg">
                       {ch.cid_num || ch.cid_name || "Desconocido"}
                     </td>
-                    <td className="px-4 py-3 font-mono text-zinc-300">{ch.dest || "—"}</td>
-                    <td className="px-4 py-3 text-xs font-semibold text-amber-400">{ch.state}</td>
-                    <td className="px-4 py-3 text-xs text-zinc-400">{ch.application}</td>
+                    <td className="px-4 py-3 font-mono text-fg-soft">{ch.dest || "—"}</td>
+                    <td className="px-4 py-3 text-xs font-semibold text-warn-text">{ch.state}</td>
+                    <td className="px-4 py-3 text-xs text-muted">{ch.application}</td>
                     <td className="px-4 py-3 text-right space-x-1">
                       <button
                         type="button"
                         onClick={() => supervisar(ch.uuid, "spy")}
                         disabled={spyLoading === ch.uuid + "spy"}
-                        className="px-2.5 py-1 text-xs font-semibold rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+                        className="px-2.5 py-1 text-xs font-semibold rounded bg-surface-3 hover:bg-surface-3 text-fg-soft"
                         title="Escuchar en silencio sin ser oído por el cliente ni el asesor"
                       >
                         🎧 Espiar
@@ -549,7 +549,7 @@ function LlamadasEnVivo() {
                         type="button"
                         onClick={() => supervisar(ch.uuid, "whisper")}
                         disabled={spyLoading === ch.uuid + "whisper"}
-                        className="px-2.5 py-1 text-xs font-semibold rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300"
+                        className="px-2.5 py-1 text-xs font-semibold rounded bg-warn-soft hover:brightness-110 text-warn-text"
                         title="Hablar únicamente con el asesor"
                       >
                         🗣️ Susurrar
@@ -558,7 +558,7 @@ function LlamadasEnVivo() {
                         type="button"
                         onClick={() => supervisar(ch.uuid, "join")}
                         disabled={spyLoading === ch.uuid + "join"}
-                        className="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300"
+                        className="px-2.5 py-1 text-xs font-semibold rounded bg-ok-soft hover:brightness-110 text-ok-text"
                         title="Entrar a la conversación en conferencia de 3 vías"
                       >
                         👥 Unirse
@@ -743,8 +743,8 @@ export default function CallsPage() {
               onClick={() => setVista("historial")}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 vista === "historial"
-                  ? "bg-amber-500 text-zinc-950 font-bold shadow"
-                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                  ? "bg-amber-500 text-black font-bold shadow"
+                  : "bg-surface-3 text-fg-soft hover:bg-surface-3"
               }`}
             >
               📋 Historial (CDR)
@@ -754,8 +754,8 @@ export default function CallsPage() {
               onClick={() => setVista("en_vivo")}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 vista === "en_vivo"
-                  ? "bg-amber-500 text-zinc-950 font-bold shadow"
-                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                  ? "bg-amber-500 text-black font-bold shadow"
+                  : "bg-surface-3 text-fg-soft hover:bg-surface-3"
               }`}
             >
               🎧 Llamadas en Vivo (Supervisión)
