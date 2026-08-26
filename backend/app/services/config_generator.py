@@ -110,6 +110,16 @@ def _append_dnd_hook(context: ET.Element, extensions: list) -> None:
     ET.SubElement(c2, "action", attrib={"application": "hangup", "data": "USER_BUSY"})
 
 
+def _append_conference_feature(context: ET.Element) -> None:
+    """*64<sala> entra (o crea) una conferencia — mod_conference ya está
+    cargado con el perfil "default". Quien marca queda como su caller ID
+    en la sala; con los controles del teléfono (DTMF) puede mutar/salir."""
+    ext = ET.SubElement(context, "extension", attrib={"name": "nspbx_conference", "continue": "false"})
+    c = ET.SubElement(ext, "condition", attrib={"field": "destination_number", "expression": r"^\*64(\d+)$"})
+    ET.SubElement(c, "action", attrib={"application": "answer"})
+    ET.SubElement(c, "action", attrib={"application": "conference", "data": "$1@default"})
+
+
 def _append_forward_feature_codes(context: ET.Element) -> None:
     """*72<dest> / *21<dest> activan el desvío incondicional de QUIEN MARCA;
     *73 lo apaga. El destino se guarda en la base interna de FreeSWITCH
@@ -751,6 +761,7 @@ def build_dialplan_xml(
     _append_call_pickup_feature_code(context)
     _append_dnd_feature_codes(context)
     _append_voicemail_feature(context)
+    _append_conference_feature(context)
     _append_forward_feature_codes(context)
     _append_dnd_hook(context, extensions)
     _append_forward_hook(context, extensions)
