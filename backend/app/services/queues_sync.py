@@ -70,6 +70,11 @@ def build_callcenter_xml(queues: list) -> str:
             "discard-abandoned-after": "60",
             "abandoned-resume-allowed": "false",
         }
+        # Anuncio de posición ("usted es el llamado número X") con la
+        # frecuencia estándar de 30 s mientras espera.
+        if getattr(queue, "announce_position", False):
+            params["announce-position"] = "true"
+            params["announce-position-frequency"] = "30"
         # La grabación de "Queue.record" NO se hace acá con el
         # record-template propio de mod_callcenter — ese mecanismo grababa
         # de verdad, pero con un nombre de archivo sin uuid (colisión

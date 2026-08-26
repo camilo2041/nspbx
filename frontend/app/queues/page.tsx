@@ -500,6 +500,15 @@ export default function QueuesPage() {
             <Toggle checked={form.record} onChange={(v) => setForm({ ...form, record: v })} />
           </div>
           <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-2.5">
+            <div>
+              <div className="text-sm text-fg-soft">Anunciar posición en la cola</div>
+              <div className="mt-0.5 text-[11px] text-faint">
+                Cada 30 s le dice a quien espera en qué posición está ("usted es el llamado número X").
+              </div>
+            </div>
+            <Toggle checked={form.announce_position} onChange={(v) => setForm({ ...form, announce_position: v })} />
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3.5 py-2.5">
             <span className="text-sm text-fg-soft">Habilitada</span>
             <Toggle checked={form.enabled} onChange={(v) => setForm({ ...form, enabled: v })} />
           </div>

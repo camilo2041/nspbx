@@ -45,6 +45,24 @@ export default function VoiceBotFlowPage() {
   const [error, setError] = useState("");
   const [savedOk, setSavedOk] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Guía de primeros pasos: se muestra la primera vez y se puede cerrar
+  // (queda guardado en el navegador).
+  const [mostrarGuia, setMostrarGuia] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return localStorage.getItem("nspbx_flow_guia") !== "1";
+    } catch {
+      return true;
+    }
+  });
+  const cerrarGuia = () => {
+    setMostrarGuia(false);
+    try {
+      localStorage.setItem("nspbx_flow_guia", "1");
+    } catch {
+      // localStorage no disponible: no importa, se vuelve a mostrar
+    }
+  };
   // Último estado que quedó persistido en el backend; comparándolo contra
   // los nodos/edges actuales se sabe si hay cambios sin guardar.
   const lastSavedRef = useRef("");
@@ -322,6 +340,42 @@ export default function VoiceBotFlowPage() {
                 <li key={i}>{p}</li>
               ))}
             </ul>
+          </div>
+        </div>
+      )}
+
+      {mostrarGuia && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-brand/25 bg-brand-soft/40 px-4 py-3 text-xs leading-relaxed text-brand-text">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="font-semibold">¿Cómo arrancar el flujo?</span>
+              <button
+                type="button"
+                onClick={cerrarGuia}
+                aria-label="Cerrar guía"
+                className="press flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-brand-text transition-colors hover:bg-brand-soft"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+            <ol className="list-inside list-decimal space-y-1">
+              <li>
+                Conectá cada <strong>tecla</strong> del nodo de audio (los puntitos de la derecha) hacia el
+                siguiente paso del flujo.
+              </li>
+              <li>
+                Cada nodo necesita su <strong>audio</strong>: subilo o generálo con voz desde el panel del nodo.
+              </li>
+              <li>
+                Elegí cuál es el <strong>nodo inicial</strong> (solo puede haber uno — la bandera es exclusiva).
+              </li>
+              <li>
+                <strong>Guardá el flujo</strong> y probálo marcando <span className="font-mono">bot_{botId}</span>{" "}
+                desde el softphone.
+              </li>
+            </ol>
           </div>
         </div>
       )}
