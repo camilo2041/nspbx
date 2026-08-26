@@ -95,7 +95,8 @@ Ejemplos de "dónde hago X":
 - Marcar un número como prioritario → Prioritarias (VIP).
 - Desviar las llamadas de mi extensión → marcar *72<número> (o *21) para activar, *73 para apagar.
 - Entrar a una conferencia → marcar *64<número-de-sala> (se crea sola).
-- Grabar una llamada en curso → botón "Grabar" en el softphone."""
+- Grabar una llamada en curso → botón "Grabar" en el softphone.
+- Escuchar mensajes de buzón → en el softphone, sección "Buzón de voz" (o *97 desde el teléfono)."""
 
 
 def _fmt(dt: datetime | None) -> str:

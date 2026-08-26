@@ -64,7 +64,13 @@
         <param name="date-fmt" value="%A, %B %d %Y, %I %M %p"/>
         <param name="email-from" value="${voicemail_account}@${voicemail_domain}"/>
       </email>
-      <!--<param name="storage-dir" value="$${storage_dir}"/>-->
+      <!-- Guarda los mensajes dentro del MISMO volumen compartido que las
+           grabaciones ($${recordings_dir} = /var/lib/freeswitch/recordings,
+           montado también en el backend) — así el panel puede listarlos y
+           reproducirlos sin acceso al storage interno de FreeSWITCH. El
+           limpiador de retención de grabaciones los cubre igual que a las
+           llamadas. -->
+      <param name="storage-dir" value="$${recordings_dir}/voicemail"/>
       <!--<param name="odbc-dsn" value="dsn:user:pass"/>-->
       <!--<param name="record-comment" value="Your Comment"/>-->
       <!--<param name="record-title" value="Your Title"/>-->

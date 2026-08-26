@@ -35,6 +35,7 @@ from app.api import (
     trunks,
     users as users_api,
     voicebots,
+    voicemail as voicemail_api,
 )
 
 from app.core import error_capture, permissions
@@ -311,6 +312,7 @@ app.include_router(campaigns.router, **_con(permissions.CAMPANAS_GESTIONAR))
 app.include_router(queues_api.router, **_con(permissions.COLAS_GESTIONAR))
 app.include_router(appointments_api.router)  # permisos por endpoint: el agente de IA entra acá
 app.include_router(calls_api.router)  # permisos por endpoint: /fs/cdr lo llama FreeSWITCH
+app.include_router(voicemail_api.router)  # permisos por endpoint: cada uno su buzón
 app.include_router(ai_usage.router, **_con(permissions.CONSUMO_IA_VER))
 app.include_router(dashboard.router)  # permiso por endpoint (LLAMADAS_VER_TODAS)
 

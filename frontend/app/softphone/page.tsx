@@ -65,6 +65,67 @@ export default function SoftphonePage() {
   const [recording, setRecording] = useState(false);
   const [recordingError, setRecordingError] = useState("");
 
+  // Buzón de voz de mi extensión (ver /api/voicemail).
+  const [buzon, setBuzon] = useState<{ filename: string; caller: string; caller_number: string; date: string; duration: number }[]>([]);
+  const [buzonCargando, setBuzonCargando] = useState(true);
+  const [buzonError, setBuzonError] = useState("");
+  const [reproduciendo, setReproduciendo] = useState<string | null>(null);
+  const buzAudioRef = useRef<HTMLAudioElement | null>(null);
+  const buzBlobRef = useRef<string | null>(null);
+
+  const cargarBuzon = async () => {
+    setBuzonCargando(true);
+    try {
+      const r = await api.get<{ extension: string; messages: { filename: string; caller: string; caller_number: string; date: string; duration: number }[] }>("/api/voicemail");
+      setBuzon(r.messages);
+      setBuzonError("");
+    } catch (e) {
+      setBuzonError(e instanceof Error ? e.message : "No se pudo cargar el buzón");
+    } finally {
+      setBuzonCargando(false);
+    }
+  };
+
+  const escucharMensaje = async (filename: string) => {
+    try {
+      if (reproduciendo === filename) {
+        buzAudioRef.current?.pause();
+        setReproduciendo(null);
+        return;
+      }
+      const blob = await api.getBlob(`/api/voicemail/audio/${entorno?.extension?.number}/${filename}`);
+      if (buzBlobRef.current) URL.revokeObjectURL(buzBlobRef.current);
+      const url = URL.createObjectURL(blob);
+      buzBlobRef.current = url;
+      if (!buzAudioRef.current) buzAudioRef.current = new Audio();
+      buzAudioRef.current.src = url;
+      buzAudioRef.current.onended = () => setReproduciendo(null);
+      await buzAudioRef.current.play();
+      setReproduciendo(filename);
+    } catch {
+      setBuzonError("No se pudo reproducir el mensaje");
+    }
+  };
+
+  const borrarMensaje = async (filename: string) => {
+    if (!window.confirm("¿Eliminar este mensaje del buzón?")) return;
+    try {
+      await api.del(`/api/voicemail/${entorno?.extension?.number}/${filename}`);
+      await cargarBuzon();
+    } catch (e) {
+      setBuzonError(e instanceof Error ? e.message : "No se pudo borrar el mensaje");
+    }
+  };
+
+  useEffect(() => {
+    cargarBuzon();
+    return () => {
+      if (buzBlobRef.current) URL.revokeObjectURL(buzBlobRef.current);
+      buzAudioRef.current?.pause();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const cargarHistorial = async () => {
     try {
       setHistorial(await api.get<CallLog[]>("/api/calls/mias?limit=25"));
@@ -394,6 +455,70 @@ export default function SoftphonePage() {
           </CardBody>
         </Card>
       </div>
+
+      {/* Buzón de voz de mi extensión */}
+      <Card className="mt-4">
+        <CardHeader
+          title="Buzón de voz"
+          subtitle={buzon.length === 0 ? "Sin mensajes" : `${buzon.length} mensaje(s) de los que llamaron cuando no contestaste`}
+          actions={
+            <Button variant="secondary" size="sm" onClick={cargarBuzon} loading={buzonCargando}>
+              {buzonCargando ? "…" : "Actualizar"}
+            </Button>
+          }
+        />
+        <CardBody>
+          {buzonError && <ErrorBanner message={buzonError} />}
+          {buzon.length === 0 ? (
+            <p className="text-sm text-faint">
+              No tenés mensajes. Quien llama cuando no contestás y tu extensión tiene el buzón activo, deja un
+              mensaje acá.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {buzon.map((m) => (
+                <li key={m.filename} className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface-2 px-3.5 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => escucharMensaje(m.filename)}
+                    aria-label={reproduciendo === m.filename ? "Detener" : "Escuchar"}
+                    className="press flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-fg-soft transition-colors hover:bg-line hover:text-fg"
+                  >
+                    {reproduciendo === m.filename ? (
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+                        <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    )}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-fg">{m.caller}</div>
+                    <div className="text-[11px] text-faint">
+                      {m.caller_number ? <span className="font-mono">{m.caller_number}</span> : null}
+                      {m.caller_number ? " · " : ""}
+                      {fechaLocal(m.date)}
+                      {m.duration > 0 ? ` · ${m.duration}s` : ""}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => borrarMensaje(m.filename)}
+                    aria-label="Eliminar mensaje"
+                    className="press flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-danger-text transition-colors hover:bg-danger-soft"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                      <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
 
       {/* Botón lateral que abre el histórico de la extensión */}
       <button
