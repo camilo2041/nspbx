@@ -62,6 +62,8 @@ export default function SoftphonePage() {
   const [busqueda, setBusqueda] = useState("");
   const [filtroDir, setFiltroDir] = useState<"todas" | "inbound" | "outbound">("todas");
   const [filtroEst, setFiltroEst] = useState<"todas" | "answered" | "no_answer" | "otro">("todas");
+  const [recording, setRecording] = useState(false);
+  const [recordingError, setRecordingError] = useState("");
 
   const cargarHistorial = async () => {
     try {
@@ -107,6 +109,32 @@ export default function SoftphonePage() {
     if (c.status === "rejected") return { label: "Rechazada", color: "slate" };
     return { label: "Fallida", color: "red" };
   };
+
+  // Grabar en vivo: encuentra el canal de MI extensión en /api/calls/active y
+  // arranca/corta `uuid_record`. La grabación queda enlazada al CDR.
+  const alternarGrabacion = async () => {
+    const ext = entorno?.extension?.number;
+    if (!ext) return;
+    setRecordingError("");
+    try {
+      const res = await api.get<{ total: number; channels: { uuid: string; cid_num?: string }[] }>("/api/calls/active");
+      const miCanal = res.channels.find((ch) => String(ch.cid_num ?? "") === ext);
+      if (!miCanal) {
+        setRecordingError("No se encontró la llamada en curso para tu extensión");
+        return;
+      }
+      await api.post(`/api/calls/${miCanal.uuid}/record`, { action: recording ? "stop" : "start" });
+      setRecording((v) => !v);
+    } catch (e) {
+      setRecordingError(e instanceof Error ? e.message : "No se pudo cambiar la grabación");
+    }
+  };
+
+  // Al terminar la llamada, el indicador de grabación se resetea.
+  useEffect(() => {
+    if (phase === "idle" && recording) setRecording(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   const connBadge =
     connState === "registered" ? (
@@ -292,6 +320,22 @@ export default function SoftphonePage() {
                   <Button variant="secondary" onClick={toggleMute}>
                     {muted ? "Reactivar mic" : "Silenciar"}
                   </Button>
+                  <Button
+                    variant={recording ? "danger" : "secondary"}
+                    onClick={alternarGrabacion}
+                    title="Grabar o detener la grabación de esta llamada"
+                  >
+                    {recording ? "⏹ Detener grabación" : "⏺ Grabar"}
+                  </Button>
+                  {recordingError && (
+                    <p className="w-full text-[11px] text-danger-text">{recordingError}</p>
+                  )}
+                  {recording && (
+                    <span className="animate-pulse flex items-center gap-1.5 text-[11px] font-semibold text-danger-text">
+                      <span className="h-2 w-2 rounded-full bg-danger" />
+                      Grabando…
+                    </span>
+                  )}
                 </div>
               </div>
             )}

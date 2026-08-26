@@ -389,6 +389,36 @@ async def get_active_calls(
     return {"total": len(canales), "channels": canales}
 
 
+class RecordToggleRequest(BaseModel):
+    action: str  # "start" | "stop"
+
+
+@router.post("/api/calls/{uuid}/record")
+async def toggle_recording(
+    uuid: str,
+    payload: RecordToggleRequest,
+    usuario: User = Depends(usuario_actual),
+    session: AsyncSession = Depends(get_session),
+):
+    """Arranca o corta la grabación de una llamada en vivo por su uuid de
+    canal (el softphone encuentra su canal en /api/calls/active). La
+    grabación se enlaza al CDR seteando `nspbx_recording` en el canal, así
+    aparece en el historial como cualquier otra."""
+    action = payload.action
+    if action not in ("start", "stop"):
+        raise HTTPException(status_code=400, detail="action debe ser 'start' o 'stop'")
+    ahora = datetime.utcnow()
+    subdir = ahora.strftime("%Y/%m/%d")
+    fs_path = f"{settings.fs_recordings_dir}/{subdir}/grab_{uuid}.wav"
+    try:
+        (Path(RECORDINGS_DIR) / subdir).mkdir(parents=True, exist_ok=True)
+        await esl.record_call(uuid, action, fs_path)
+    except Exception as exc:
+        logger.warning("No se pudo %s la grabación de %s: %s", action, uuid, exc)
+        raise HTTPException(status_code=502, detail=f"No se pudo operar la grabación: {exc}")
+    return {"ok": True, "recording": fs_path if action == "start" else None}
+
+
 @router.post("/api/calls/spy")
 async def spy_on_call(payload: SpyRequest, usuario: User = Depends(usuario_actual)):
     """Supervisión de llamada en vivo (Espiar/Susurrar/Unirse). Exige que el usuario

@@ -470,6 +470,17 @@ async def spy_call(supervisor_ext: str, target_uuid: str, mode: str = "spy") -> 
     return await bgapi(cmd)
 
 
+async def record_call(uuid: str, action: str, path: str) -> None:
+    """Arranca/corta la grabación de un canal en vivo con `uuid_record` y,
+    al arrancar, deja `nspbx_recording` seteada en el canal para que el CDR
+    enlace el archivo al historial (ver app/api/calls.py y
+    app/services/dialplan_recording.py). `path` es la ruta que VE
+    FreeSWITCH ($${recordings_dir}/...)."""
+    await api(f"uuid_record {uuid} {action} {path}")
+    if action == "start":
+        await api(f"uuid_setvar {uuid} nspbx_recording {path}")
+
+
 async def get_active_channels() -> str:
     """Devuelve la lista de canales activos en formato JSON para el panel de monitoreo en vivo."""
     return await api("show channels as json")
