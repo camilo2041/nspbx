@@ -9,6 +9,7 @@ import { FloatingCallWidget } from "@/components/floating-call-widget";
 import { IncomingCallBanner } from "@/components/incoming-call-banner";
 import { ThemeToggle } from "@/components/theme";
 import { ConfirmarProvider } from "@/components/confirm-dialog";
+import { SystemHealthBanner } from "@/components/system-health-banner";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { SoftphoneProvider } from "@/lib/softphone-context";
 import { PERMISOS } from "@/lib/types";
@@ -592,6 +593,7 @@ function Marco({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
+      <SystemHealthBanner />
     </div>
   );
 }
