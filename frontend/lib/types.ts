@@ -48,7 +48,7 @@ export interface VoiceBot {
   created_at: string;
 }
 
-export type FlowNodeType = "menu" | "transfer" | "hangup" | "ai_agent";
+export type FlowNodeType = "menu" | "transfer" | "hangup" | "ai_agent" | "pause";
 
 export interface AiNodeExit {
   key: string;
@@ -93,6 +93,8 @@ export interface FlowNodeData {
   exits?: AiNodeExit[];
   campaign_entry?: boolean;
   requiere_cita?: boolean;
+  // Nodo "pause": segundos de espera antes de seguir.
+  seconds?: number;
 }
 
 export interface FlowNode {

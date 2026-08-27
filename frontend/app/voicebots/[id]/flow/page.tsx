@@ -114,11 +114,24 @@ export default function VoiceBotFlowPage() {
     [nodes, edges]
   );
 
-  const addNode = (type: "menu" | "transfer" | "hangup" | "ai_agent") => {
+  const addNode = (type: "menu" | "transfer" | "hangup" | "ai_agent" | "pause") => {
     const id = newId();
     const label =
-      type === "menu" ? "Menú de audio" : type === "transfer" ? "Transferir" : type === "ai_agent" ? "Agente IA" : "Colgar";
-    const data = type === "ai_agent" ? { label, prompt: "", tools: [], max_turns: 10, exits: [] } : { label };
+      type === "menu"
+        ? "Menú de audio"
+        : type === "transfer"
+          ? "Transferir"
+          : type === "ai_agent"
+            ? "Agente IA"
+            : type === "pause"
+              ? "Pausa"
+              : "Colgar";
+    const data =
+      type === "ai_agent"
+        ? { label, prompt: "", tools: [], max_turns: 12, exits: [] }
+        : type === "pause"
+          ? { label, seconds: 3 }
+          : { label };
     const next = [
       ...nodes,
       { id, type, position: { x: 300 + Math.random() * 200, y: 100 + Math.random() * 300 }, data },
@@ -273,6 +286,9 @@ export default function VoiceBotFlowPage() {
         problemas.push(`La transferencia "${n.data?.label || n.id}" no tiene destino configurado.`);
       }
     }
+    if (n.type === "pause" && !edges.some((e) => e.source === n.id)) {
+      problemas.push(`La pausa "${n.data?.label || n.id}" no tiene conexión — tras la espera la llamada colgaría.`);
+    }
     if (n.type === "ai_agent") {
       const keys = ((n.data?.exits as { key: string }[]) || []).map((x) => x.key.trim());
       const dups = keys.filter((k, i) => k && keys.indexOf(k) !== i);
@@ -355,6 +371,9 @@ export default function VoiceBotFlowPage() {
           </Button>
           <Button variant="secondary" onClick={() => addNode("hangup")}>
             + Colgar
+          </Button>
+          <Button variant="secondary" onClick={() => addNode("pause")}>
+            + Pausa
           </Button>
           {dirty && <span className="text-xs font-medium text-warn-text">● sin guardar</span>}
           <Button onClick={save} loading={saving}>

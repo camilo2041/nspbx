@@ -171,7 +171,9 @@ export function NodePanel({
               ? "Transferir llamada"
               : node.type === "ai_agent"
                 ? "Agente IA"
-                : "Colgar"}
+                : node.type === "pause"
+                  ? "Pausa"
+                  : "Colgar"}
         </h4>
         <IconButton label="Cerrar panel" onClick={onClose} className="h-8 w-8">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
@@ -188,6 +190,24 @@ export function NodePanel({
 
       <div className="space-y-3.5">
         <Input label="Nombre del nodo" value={node.data.label || ""} onChange={(v) => onChange({ label: v })} />
+
+        {node.type === "pause" && (
+          <>
+            <Input
+              label="Segundos de espera"
+              type="number"
+              value={node.data.seconds ?? 3}
+              onChange={(v) => onChange({ seconds: Math.max(1, Number(v) || 1) })}
+              hint="Cuánto esperar en silencio antes de seguir por la conexión. Útil para pausas dramáticas antes de una transferencia o un mensaje."
+            />
+            <div className="rounded-xl border border-line bg-surface-2 p-3">
+              <p className="text-[11px] leading-relaxed text-muted">
+                Conectá este nodo (desde el puntito de la derecha) al siguiente paso: al terminar la espera, la
+                llamada continúa ahí. Sin conexión, cuelga.
+              </p>
+            </div>
+          </>
+        )}
 
         {(node.type === "menu" || node.type === "ai_agent") && (
           <div className="rounded-xl border border-line bg-surface-2 p-3">

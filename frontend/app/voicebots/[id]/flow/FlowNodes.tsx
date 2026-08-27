@@ -120,6 +120,23 @@ export function HangupNodeView({ data, selected }: { data: FlowNodeData; selecte
   );
 }
 
+export function PausaNodeView({ data, selected }: { data: FlowNodeData; selected?: boolean }) {
+  return (
+    <NodeShell
+      color="bg-gradient-to-r from-sky-600 to-cyan-600"
+      icon="⏸"
+      title={data.label || "Pausa"}
+      selected={selected}
+    >
+      <Handle type="target" position={Position.Left} />
+      <div>
+        Espera <span className="font-mono text-fg">{data.seconds ?? 3}s</span> y continúa
+      </div>
+      <Handle type="source" position={Position.Right} id="ok" />
+    </NodeShell>
+  );
+}
+
 const HERRAMIENTA_LABEL: Record<string, string> = {
   consultar_disponibilidad: "Consultar agenda",
   agendar_cita: "Agendar",
@@ -214,4 +231,5 @@ export const nodeTypes = {
   transfer: (p: any) => <TransferNodeView data={p.data} selected={p.selected} />,
   hangup: (p: any) => <HangupNodeView data={p.data} selected={p.selected} />,
   ai_agent: (p: any) => <AiAgentNodeView data={p.data} selected={p.selected} />,
+  pause: (p: any) => <PausaNodeView data={p.data} selected={p.selected} />,
 };

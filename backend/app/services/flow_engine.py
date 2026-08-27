@@ -194,6 +194,9 @@ def build_voicebot_flow_routes(
         if node_type == "ai_agent":
             _build_ai_agent_context(section, bot.id, node_id)
             continue
+        if node_type == "pause":
+            _build_pause_context(section, bot.id, node_id, node, flow, queues, record_all)
+            continue
         if node_type != "menu":
             # Un nodo "transfer"/"hangup" normalmente solo se resuelve
             # inline como destino de un edge (ver _append_target_actions),
@@ -315,6 +318,34 @@ def _build_ai_agent_context(section: ET.Element, bot_id: int, node_id: str) -> N
     ET.SubElement(enter_cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
 
 
+def _build_pause_context(
+    section: ET.Element,
+    bot_id: int,
+    node_id: str,
+    node: dict,
+    flow: dict,
+    queues: list | None = None,
+    record_all: bool = False,
+) -> None:
+    """Contexto de un nodo "pausa": espera N segundos y sigue por su único
+    edge saliente (o cuelga si no conecta a nada). Se llega siempre por
+    `transfer go XML bot_{id}_n{node_id}` (ver _append_target_actions)."""
+    segundos = int(node.get("data", {}).get("seconds") or 3)
+    enter_context = ET.SubElement(section, "context", attrib={"name": f"bot_{bot_id}_n{node_id}"})
+    enter_ext = ET.SubElement(enter_context, "extension", attrib={"name": "enter", "continue": "false"})
+    enter_cond = ET.SubElement(enter_ext, "condition", attrib={"field": "destination_number", "expression": ".*"})
+    ET.SubElement(enter_cond, "action", attrib={"application": "sleep", "data": str(max(1, segundos) * 1000)})
+
+    target_edge = next((e for e in flow["edges"] if str(e.get("source")) == str(node_id)), None)
+    target = None
+    if target_edge:
+        target = next((n for n in flow["nodes"] if str(n.get("id")) == str(target_edge.get("target"))), None)
+    if target is not None:
+        _append_target_actions(enter_cond, target, bot_id, queues, record_all)
+    else:
+        ET.SubElement(enter_cond, "action", attrib={"application": "hangup", "data": "NORMAL_CLEARING"})
+
+
 def _build_standalone_context(
     section: ET.Element,
     bot_id: int,
@@ -340,11 +371,10 @@ def _append_target_actions(
     data = target.get("data", {})
     ttype = target.get("type", "menu")
 
-    if ttype in ("menu", "ai_agent"):
-        # Ambos se referencian siempre por su propio contexto — un nodo
-        # Agente IA nunca embebe el prompt acá, es ahí donde se fija
-        # nspbx_node_id y se entrega el control al voizbot (ver el bucle
-        # de arriba y ai_agent.py).
+    if ttype in ("menu", "ai_agent", "pause"):
+        # Todos se referencian por su PROPIO contexto (ver el bucle de
+        # build_voicebot_flow_routes) — un Agente IA fija nspbx_node_id y
+        # entrega el control al voizbot; una pausa espera y sigue.
         ET.SubElement(cond, "action", attrib={"application": "transfer", "data": f"go XML bot_{bot_id}_n{target['id']}"})
         return
 
