@@ -593,6 +593,26 @@ export default function CallsPage() {
   const [offset, setOffset] = useState(0);
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
   const [diasCount, setDiasCount] = useState<{ dia: string; total: number }[]>([]);
+
+  // Exporta el historial (con los filtros actuales) a CSV.
+  const exportarCsv = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (direction) params.set("direction", direction);
+      if (status) params.set("status", status);
+      if (search) params.set("search", search);
+      if (diaSeleccionado) params.set("day", diaSeleccionado);
+      const blob = await api.getBlob(`/api/calls/export?${params.toString()}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `llamadas${diaSeleccionado ? `_${diaSeleccionado}` : ""}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo exportar");
+    }
+  };
   const [expandedAnios, setExpandedAnios] = useState<Set<number>>(new Set());
   const [expandedMeses, setExpandedMeses] = useState<Set<string>>(new Set());
   // Para abrir el año/mes más reciente y seleccionar su día una sola vez,
@@ -760,6 +780,16 @@ export default function CallsPage() {
             >
               🎧 Llamadas en Vivo (Supervisión)
             </button>
+            {vista === "historial" && (
+              <button
+                type="button"
+                onClick={exportarCsv}
+                title="Descargar el historial filtrado en CSV (Excel / Hojas de cálculo)"
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-surface-3 text-fg-soft hover:bg-surface-3"
+              >
+                ⬇ Exportar CSV
+              </button>
+            )}
           </div>
         }
       />

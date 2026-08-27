@@ -6,12 +6,14 @@ se normaliza y guarda. Antes la tabla `call_logs` existía pero nadie la
 llenaba: no había forma de ver el historial en la app.
 """
 
+import csv
+import io
 import logging
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -459,6 +461,45 @@ async def mis_llamadas(
     )
     rows = (await session.execute(query)).scalars().all()
     return [_call_out(c) for c in rows]
+
+
+@router.get("/api/calls/export")
+async def export_calls(
+    direction: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    day: str | None = None,
+    session: AsyncSession = Depends(get_session),
+    usuario: User = _VER,
+):
+    """Historial completo (respetando los filtros y el alcance del rol) en
+    CSV para Excel/Hojas de cálculo — la salida de reportes del negocio."""
+    query = _acotar(select(CallLog), _solo_suyas(usuario)).order_by(desc(CallLog.started_at), desc(CallLog.id))
+    query = _filtrar_comunes(query, direction, status, search, day)
+    rows = (await session.execute(query)).scalars().all()
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Fecha", "Direccion", "Origen", "Destino", "Estado", "Causa", "Duracion_s", "Hablado_s"])
+    for c in rows:
+        w.writerow(
+            [
+                c.started_at,
+                c.direction,
+                c.caller_number or "",
+                c.callee_number or "",
+                c.status,
+                c.hangup_cause or "",
+                c.duration or 0,
+                c.billsec or 0,
+            ]
+        )
+    nombre = f"llamadas_{day or 'todas'}.csv"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={nombre}"},
+    )
 
 
 @router.get("/api/calls/{call_id}", response_model=CallLogOut)
