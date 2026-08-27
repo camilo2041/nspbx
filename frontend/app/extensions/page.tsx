@@ -22,6 +22,7 @@ import {
   Tr,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useConfirmar } from "@/components/confirm-dialog";
 import { Extension, SystemSettings, Trunk } from "@/lib/types";
 
 const empty: Omit<Extension, "id" | "created_at"> = {
@@ -35,6 +36,7 @@ const empty: Omit<Extension, "id" | "created_at"> = {
 const emptyCall = { destination: "", trunk_id: "" };
 
 export default function ExtensionsPage() {
+  const confirmar = useConfirmar();
   const [items, setItems] = useState<Extension[]>([]);
   const [trunks, setTrunks] = useState<Trunk[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
@@ -107,7 +109,7 @@ export default function ExtensionsPage() {
   };
 
   const remove = async (ext: Extension) => {
-    if (!confirm(`¿Eliminar la extensión ${ext.number}?`)) return;
+    if (!(await confirmar({ mensaje: `¿Eliminar la extensión ${ext.number}?`, confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/extensions/${ext.id}`);
       await load();

@@ -7,6 +7,7 @@ import { useSoftphone, resolverServidorSip } from "@/lib/softphone-context";
 import { api } from "@/lib/api";
 import { fechaLocal } from "@/lib/dates";
 import { CallLog } from "@/lib/types";
+import { useConfirmar } from "@/components/confirm-dialog";
 
 const DIALPAD: { digit: string; letters?: string }[] = [
   { digit: "1" },
@@ -24,6 +25,7 @@ const DIALPAD: { digit: string; letters?: string }[] = [
 ];
 
 export default function SoftphonePage() {
+  const confirmar = useConfirmar();
   const {
     entorno,    loadError,
     dndCambiando,
@@ -108,7 +110,7 @@ export default function SoftphonePage() {
   };
 
   const borrarMensaje = async (filename: string) => {
-    if (!window.confirm("¿Eliminar este mensaje del buzón?")) return;
+    if (!(await confirmar({ mensaje: "¿Eliminar este mensaje del buzón?", confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/voicemail/${entorno?.extension?.number}/${filename}`);
       await cargarBuzon();

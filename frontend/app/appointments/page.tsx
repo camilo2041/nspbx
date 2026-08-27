@@ -27,6 +27,7 @@ import {
 import { api } from "@/lib/api";
 import { Appointment, GestionRow } from "@/lib/types";
 import { fechaLocal } from "@/lib/dates";
+import { useConfirmar } from "@/components/confirm-dialog";
 
 const gestionLabel: Record<GestionRow["action"], { label: string; color: string }> = {
   confirmada: { label: "Confirmó", color: "green" },
@@ -60,6 +61,7 @@ const statusLabel: Record<string, { label: string; color: string }> = {
 };
 
 export default function AppointmentsPage() {
+  const confirmar = useConfirmar();
   const [vista, setVista] = useState<"gestion" | "agenda">("gestion");
   const [items, setItems] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,7 +158,7 @@ export default function AppointmentsPage() {
   };
 
   const remove = async (a: Appointment) => {
-    if (!confirm(`¿Eliminar la cita de ${a.patient_name}?`)) return;
+    if (!(await confirmar({ mensaje: `¿Eliminar la cita de ${a.patient_name}?`, confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/appointments/${a.id}`);
       await load();

@@ -21,6 +21,7 @@ import {
   Tr,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useConfirmar } from "@/components/confirm-dialog";
 import { Trunk, TrunkStatus } from "@/lib/types";
 
 const empty = {
@@ -48,6 +49,7 @@ function statusBadgeFor(state: string | null | undefined): { color: string; labe
 }
 
 export default function TrunksPage() {
+  const confirmar = useConfirmar();
   const [items, setItems] = useState<Trunk[]>([]);
   const [statuses, setStatuses] = useState<Record<number, TrunkStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -141,7 +143,7 @@ export default function TrunksPage() {
   };
 
   const remove = async (trunk: Trunk) => {
-    if (!confirm(`¿Eliminar la troncal ${trunk.name}?`)) return;
+    if (!(await confirmar({ mensaje: `¿Eliminar la troncal ${trunk.name}?`, confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/trunks/${trunk.id}`);
       await load();

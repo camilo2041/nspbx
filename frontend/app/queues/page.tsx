@@ -24,6 +24,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Extension, Queue, TtsVoice } from "@/lib/types";
+import { useConfirmar } from "@/components/confirm-dialog";
 
 const fileInputClass =
   "block w-full cursor-pointer text-xs text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-on-brand hover:file:brightness-110";
@@ -59,6 +60,7 @@ const empty: Omit<Queue, "id" | "created_at"> = {
 };
 
 export default function QueuesPage() {
+  const confirmar = useConfirmar();
   const [items, setItems] = useState<Queue[]>([]);
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,7 +154,7 @@ export default function QueuesPage() {
   };
 
   const remove = async (q: Queue) => {
-    if (!confirm(`¿Eliminar la cola ${q.name}?`)) return;
+    if (!(await confirmar({ mensaje: `¿Eliminar la cola ${q.name}?`, confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/queues/${q.id}`);
       await load();

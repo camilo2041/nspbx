@@ -20,6 +20,7 @@ import {
 import { Button, ErrorBanner, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { FlowNode, FlowEdge, TtsVoice, VoiceBot } from "@/lib/types";
+import { useConfirmar } from "@/components/confirm-dialog";
 import { nodeTypes } from "./FlowNodes";
 import { NodePanel } from "./NodePanel";
 
@@ -34,6 +35,7 @@ export default function VoiceBotFlowPage() {
   const params = useParams();
   const router = useRouter();
   const botId = Number(params.id);
+  const confirmar = useConfirmar();
 
   const [bot, setBot] = useState<VoiceBot | null>(null);
   const [voices, setVoices] = useState<TtsVoice[]>([]);
@@ -222,8 +224,16 @@ export default function VoiceBotFlowPage() {
   }, [dirty]);
 
   // Al volver a la lista con cambios sin guardar, confirmar antes de irse.
-  const volverALista = () => {
-    if (dirty && !window.confirm("Hay cambios sin guardar en el flujo. ¿Salir de todos modos?")) return;
+  const volverALista = async () => {
+    if (
+      dirty &&
+      !(await confirmar({
+        mensaje: "Hay cambios sin guardar en el flujo. ¿Salir de todos modos?",
+        confirmar: "Salir",
+        cancelar: "Quedarme",
+      }))
+    )
+      return;
     router.push("/voicebots");
   };
 

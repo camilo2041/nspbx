@@ -21,6 +21,7 @@ import {
   Toggle,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useConfirmar } from "@/components/confirm-dialog";
 import { buildFlowTemplate, FLOW_TEMPLATES, FlowTemplateKey } from "@/lib/flow-templates";
 import { AiTemplate, Extension, TtsVoice, VoiceBot } from "@/lib/types";
 
@@ -61,6 +62,7 @@ function serializeMenu(rows: MenuRow[]): string {
 
 export default function VoicebotsPage() {
   const router = useRouter();
+  const confirmar = useConfirmar();
   const [items, setItems] = useState<VoiceBot[]>([]);
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,7 +215,7 @@ export default function VoicebotsPage() {
   };
 
   const remove = async (bot: VoiceBot) => {
-    if (!confirm(`¿Eliminar el voizbot ${bot.name}?`)) return;
+    if (!(await confirmar({ mensaje: `¿Eliminar el voizbot ${bot.name}?`, confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/voicebots/${bot.id}`);
       await load();

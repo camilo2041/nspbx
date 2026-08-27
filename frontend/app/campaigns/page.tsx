@@ -26,6 +26,7 @@ import {
   Tr,
 } from "@/components/ui";
 import { api } from "@/lib/api";
+import { useConfirmar } from "@/components/confirm-dialog";
 import {
   CampaignNumber,
   CampaignNumbersUploadResult,
@@ -48,6 +49,7 @@ const empty = { name: "", trunk_id: "", voicebot_id: "", max_concurrency: 5, ret
 const POR_PAGINA = 50;
 
 export default function CampaignsPage() {
+  const confirmar = useConfirmar();
   const [items, setItems] = useState<CampaignWithStats[]>([]);
   const [trunks, setTrunks] = useState<Trunk[]>([]);
   const [bots, setBots] = useState<VoiceBot[]>([]);
@@ -193,7 +195,7 @@ export default function CampaignsPage() {
   };
 
   const remove = async (c: CampaignWithStats) => {
-    if (!confirm(`¿Eliminar la campaña ${c.name}?`)) return;
+    if (!(await confirmar({ mensaje: `¿Eliminar la campaña ${c.name}?`, confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/campaigns/${c.id}`);
       await load();
@@ -411,7 +413,7 @@ export default function CampaignsPage() {
 
   const removeNumber = async (n: CampaignNumber) => {
     if (!selected) return;
-    if (!confirm(`¿Eliminar el número ${n.phone}?`)) return;
+    if (!(await confirmar({ mensaje: `¿Eliminar el número ${n.phone}?`, confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/campaigns/${selected.id}/numbers/${n.id}`);
       await recargarNumeros(selected.id);
@@ -425,7 +427,7 @@ export default function CampaignsPage() {
   // se hayan sincronizado en la Agenda a partir de ellos).
   const clearNumbers = async () => {
     if (!selected || numbers.length === 0) return;
-    if (!confirm(`¿Vaciar los ${numbers.length} número(s) cargados en esta campaña? Las citas que ya se sincronizaron en la Agenda no se tocan.`)) return;
+    if (!(await confirmar({ mensaje: `¿Vaciar los ${numbers.length} número(s) cargados en esta campaña? Las citas que ya se sincronizaron en la Agenda no se tocan.`, confirmar: "Vaciar", danger: true }))) return;
     try {
       await api.del(`/api/campaigns/${selected.id}/numbers`);
       await recargarNumeros(selected.id);

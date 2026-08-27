@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Card, Modal, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 import { OutboundRoute, Trunk } from "@/lib/types";
+import { useConfirmar } from "@/components/confirm-dialog";
 
 export default function OutboundRoutesPage() {
+  const confirmar = useConfirmar();
   const [routes, setRoutes] = useState<OutboundRoute[]>([]);
   const [trunks, setTrunks] = useState<Trunk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,7 @@ export default function OutboundRoutesPage() {
   };
 
   const eliminar = async (id: number) => {
-    if (!confirm("¿Seguro de eliminar esta ruta saliente?")) return;
+    if (!(await confirmar({ mensaje: "¿Seguro de eliminar esta ruta saliente?", confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/outbound-routes/${id}`);
       await cargarDatos();

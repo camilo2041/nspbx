@@ -22,6 +22,7 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { Extension, InboundRoute, Queue, TimeCondition, VoiceBot } from "@/lib/types";
+import { useConfirmar } from "@/components/confirm-dialog";
 
 type DestType = "extension" | "queue" | "voicebot" | "time_condition" | "hangup";
 
@@ -35,6 +36,7 @@ const empty: Omit<InboundRoute, "id" | "created_at"> = {
 };
 
 export default function InboundRoutesPage() {
+  const confirmar = useConfirmar();
   const [items, setItems] = useState<InboundRoute[]>([]);
   const [extensions, setExtensions] = useState<Extension[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
@@ -124,7 +126,7 @@ export default function InboundRoutesPage() {
   };
 
   const remove = async (r: InboundRoute) => {
-    if (!confirm(`¿Eliminar la ruta ${r.name}?`)) return;
+    if (!(await confirmar({ mensaje: `¿Eliminar la ruta ${r.name}?`, confirmar: "Eliminar", danger: true }))) return;
     try {
       await api.del(`/api/inbound-routes/${r.id}`);
       await load();

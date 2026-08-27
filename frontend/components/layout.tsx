@@ -8,6 +8,7 @@ import { FloatingAssistantWidget } from "@/components/floating-assistant-widget"
 import { FloatingCallWidget } from "@/components/floating-call-widget";
 import { IncomingCallBanner } from "@/components/incoming-call-banner";
 import { ThemeToggle } from "@/components/theme";
+import { ConfirmarProvider } from "@/components/confirm-dialog";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { SoftphoneProvider } from "@/lib/softphone-context";
 import { PERMISOS } from "@/lib/types";
@@ -329,10 +330,12 @@ export default function SidebarLayout({ children }: { children: ReactNode }) {
   return (
     <AuthProvider>
       <SoftphoneProvider>
-        <IncomingCallBanner />
-        <FloatingCallWidget />
-        <FloatingAssistantWidget />
-        <Marco>{children}</Marco>
+        <ConfirmarProvider>
+          <IncomingCallBanner />
+          <FloatingCallWidget />
+          <FloatingAssistantWidget />
+          <Marco>{children}</Marco>
+        </ConfirmarProvider>
       </SoftphoneProvider>
     </AuthProvider>
   );

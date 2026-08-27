@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { Button, Card, CardHeader, ErrorBanner, Input, Modal, Note, PageHeader, Table, Td, Tr, Textarea } from "@/components/ui";
 import { api } from "@/lib/api";
 import { PriorityNumber } from "@/lib/types";
+import { useConfirmar } from "@/components/confirm-dialog";
 
 export default function PriorityNumbersPage() {
+  const confirmar = useConfirmar();
   const [items, setItems] = useState<PriorityNumber[]>([]);
   const [announceText, setAnnounceText] = useState("");
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,7 @@ export default function PriorityNumbersPage() {
   };
 
   const eliminar = async (n: PriorityNumber) => {
-    if (!confirm(`¿Quitar ${n.number} de la lista de prioridad?`)) return;
+    if (!(await confirmar({ mensaje: `¿Quitar ${n.number} de la lista de prioridad?`, confirmar: "Quitar", danger: true }))) return;
     try {
       await api.del(`/api/priority-numbers/${n.id}`);
       await load();

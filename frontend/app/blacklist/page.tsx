@@ -5,8 +5,10 @@ import { Button, Card, Modal, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
 import { BlacklistNumber } from "@/lib/types";
 import { fechaLocal } from "@/lib/dates";
+import { useConfirmar } from "@/components/confirm-dialog";
 
 export default function BlacklistPage() {
+  const confirmar = useConfirmar();
   const [items, setItems] = useState<BlacklistNumber[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +57,7 @@ export default function BlacklistPage() {
   };
 
   const eliminar = async (id: number) => {
-    if (!confirm("¿Seguro de remover este número de la lista negra?")) return;
+    if (!(await confirmar({ mensaje: "¿Seguro de remover este número de la lista negra?", confirmar: "Remover", danger: true }))) return;
     try {
       await api.del(`/api/blacklist/${id}`);
       await cargarLista();
