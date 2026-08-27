@@ -12,6 +12,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import func, select, text, update
 
 from app.api import (
@@ -256,13 +257,36 @@ app = FastAPI(
     dependencies=[Depends(sesion_obligatoria)],
 )
 
+# CORS: el token de sesión viaja por cabecera Authorization (Bearer), NUNCA
+# por cookie — la app no manda `credentials` en el fetch. Con
+# allow_credentials=False, "allow_origins=['*']" es seguro (el navegador no
+# envía cookies cross-origin) y cubre cualquier origen de despliegue (dev en
+# localhost:3005, o el dominio del panel vía Traefik, que ni siquiera
+# necesita CORS porque es mismo origen).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Cabeceras de seguridad HTTP básicas (ver auditoría). Se omitió la
+    CSP a propósito: el panel usa scripts inline (tema), blob: URLs para
+    audios y WebSockets — una CSP mal configurada rompería todo esto."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["Referrer-Policy"] = "same-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 def _con(*permisos: str) -> dict:
     return {"dependencies": [Depends(requiere(*permisos))]}
