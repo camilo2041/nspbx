@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Badge, Card, CardHeader, ErrorBanner, PageHeader, Select, Skeleton } from "@/components/ui";
+import { Badge, Button, Card, CardHeader, ErrorBanner, PageHeader, Select, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fechaLocal } from "@/lib/dates";
 
@@ -332,22 +332,66 @@ export default function CallCenterPage() {
     color: ESTADO_COLOR[e.status] ?? C.muted,
   }));
 
+  // Exporta el reporte del período a CSV (cliente-side, Excel con BOM).
+  const exportarCsv = () => {
+    if (!data) return;
+    const q = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+    const filas: string[][] = [];
+    filas.push([`Reporte Call Center - ultimos ${days} dias`, "", "", ""]);
+    filas.push([]);
+    filas.push(["Metrica", "Valor", "", ""]);
+    filas.push(["Llamadas totales", String(r?.total ?? 0), "", ""]);
+    filas.push(["Contestadas", String(r?.answered ?? 0), "", ""]);
+    filas.push(["Sin respuesta", String(r?.no_answer ?? 0), "", ""]);
+    filas.push(["Fallidas/ocupado", String((r?.busy ?? 0) + (r?.failed ?? 0)), "", ""]);
+    filas.push(["Minutos hablados", String(((r?.talk_seconds ?? 0) / 60).toFixed(1)), "", ""]);
+    filas.push(["Tasa de respuesta %", String(r?.answer_rate ?? 0), "", ""]);
+    filas.push(["Espera promedio (s)", String(r?.avg_wait_seconds ?? 0), "", ""]);
+    filas.push(["Llamadas IA", String(data.ia.total ?? 0), "", ""]);
+    filas.push(["IA resueltas %", String(data.ia.resolution_rate ?? 0), "", ""]);
+    filas.push(["Citas creadas", String(data.citas.total ?? 0), "", ""]);
+    filas.push(["Citas confirmadas", String(data.citas.confirmadas ?? 0), "", ""]);
+    filas.push([]);
+    filas.push(["Fecha", "Total", "Contestadas", "Hablado(s)"]);
+    data.por_dia.forEach((d) => filas.push([d.dia, String(d.total), String(d.answered), String(d.talk)]));
+    filas.push([]);
+    filas.push(["Destino", "Llamadas", "Hablado(s)", ""]);
+    data.top_destinos.forEach((d) => filas.push([d.numero, String(d.total), String(d.talk), ""]));
+    filas.push([]);
+    filas.push(["Origen", "Llamadas", "", ""]);
+    data.top_origenes.forEach((d) => filas.push([d.numero, String(d.total), "", ""]));
+
+    const csv = filas.map((f) => f.map(q).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `reporte_call_center_${days}dias.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       <PageHeader
         title="Call Center"
         subtitle="Dashboard del centro de llamadas: volumen, calidad de servicio, destinos y uso del voizbot"
         actions={
-          <Select
-            label=""
-            value={String(days)}
-            onChange={(v) => setDays(Number(v))}
-            options={[
-              { value: "7", label: "Últimos 7 días" },
-              { value: "30", label: "Últimos 30 días" },
-              { value: "90", label: "Últimos 90 días" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={exportarCsv} disabled={!data}>
+              ⬇ Exportar CSV
+            </Button>
+            <Select
+              label=""
+              value={String(days)}
+              onChange={(v) => setDays(Number(v))}
+              options={[
+                { value: "7", label: "Últimos 7 días" },
+                { value: "30", label: "Últimos 30 días" },
+                { value: "90", label: "Últimos 90 días" },
+              ]}
+            />
+          </div>
         }
       />
 
