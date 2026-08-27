@@ -454,6 +454,25 @@ async def originate_bridge(
     return await bgapi(cmd)
 
 
+async def originate_ring_to_dialplan(
+    from_endpoint: str,
+    dialplan_destination: str,
+    caller_id: str = "NSPBX",
+    timeout: int = 30,
+) -> str:
+    """Suena `from_endpoint` (la extensión del usuario) y, al contestar,
+    transfiere la llamada a un DESTINO DEL DIALPLAN (ej. `bot_1`) en el
+    context default. Se usa para "Probar" un voizbot desde el editor de
+    flujo: quien contesta queda dentro del flujo del bot."""
+    safe_caller_id = caller_id.replace("'", "")
+    cmd = (
+        f"originate {{origination_caller_id_name='{safe_caller_id}',"
+        f"origination_caller_id_number='{safe_caller_id}',"
+        f"call_timeout={timeout}}}{from_endpoint} &transfer({dialplan_destination} XML default)"
+    )
+    return await bgapi(cmd)
+
+
 async def spy_call(supervisor_ext: str, target_uuid: str, mode: str = "spy") -> str:
     """Supervisión de llamadas en vivo (estilo Vicidial):
     - mode="spy": Escucha en silencio

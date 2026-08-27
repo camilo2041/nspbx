@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import usuario_actual
 from app.core.database import get_session
-from app.models import VoiceBot
+from app.core.runtime_settings import runtime_settings
+from app.models import User, VoiceBot
 from app.schemas import (
     VoiceBotCreate,
     VoiceBotFlowUpdate,
@@ -15,7 +17,7 @@ from app.schemas import (
     VoiceBotUpdate,
 )
 from app.models import SystemSettings
-from app.services import ai_intents, deepgram, greetings, tts, tts_elevenlabs
+from app.services import ai_intents, deepgram, esl, greetings, tts, tts_elevenlabs
 from app.services.esl import reloadxml
 from app.services.flow_engine import legacy_flow_from_bot, parse_flow
 
@@ -89,6 +91,26 @@ async def create_voicebot(payload: VoiceBotCreate, session: AsyncSession = Depen
         raise HTTPException(status_code=400, detail="Nombre de bot duplicado")
     await session.refresh(bot)
     return bot
+
+
+@router.post("/{bot_id}/test")
+async def test_voicebot(bot_id: int, session: AsyncSession = Depends(get_session), usuario: User = Depends(usuario_actual)):
+    """"Probar" un voizbot desde el editor: timbra la extensión del usuario
+    y, al contestar, la conecta con el flujo del bot (bot_<id>)."""
+    bot = await session.get(VoiceBot, bot_id)
+    if not bot:
+        raise HTTPException(status_code=404, detail="Bot no encontrado")
+    if not usuario.extension:
+        raise HTTPException(status_code=400, detail="Tu usuario no tiene una extensión asignada para probar")
+    try:
+        out = await esl.originate_ring_to_dialplan(
+            from_endpoint=f"user/{usuario.extension.number}@{runtime_settings.fs_domain}",
+            dialplan_destination=f"bot_{bot.id}",
+            caller_id=usuario.extension.caller_id_name or usuario.extension.number,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"FreeSWITCH no disponible: {exc}")
+    return {"ok": True, "output": out}
 
 
 @router.get("/ai-templates")

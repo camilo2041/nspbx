@@ -286,6 +286,22 @@ export default function VoiceBotFlowPage() {
     navigator.clipboard?.writeText(`bot_${botId}`).catch(() => {});
   };
 
+  // "Probar" real: timbra MI extensión y, al contestar, me conecta al flujo.
+  const [probando, setProbando] = useState(false);
+  const [pruebaResultado, setPruebaResultado] = useState("");
+  const probarBot = async () => {
+    setProbando(true);
+    setPruebaResultado("");
+    try {
+      await api.post(`/api/voicebots/${botId}/test`, {});
+      setPruebaResultado("Te está timbrando el softphone — contestá para entrar al flujo.");
+    } catch (e) {
+      setPruebaResultado(e instanceof Error ? e.message : "No se pudo iniciar la prueba");
+    } finally {
+      setProbando(false);
+    }
+  };
+
   if (loading) return <Spinner />;
 
   return (
@@ -316,6 +332,18 @@ export default function VoiceBotFlowPage() {
               copiar
             </button>
           </div>
+          <Button variant="secondary" onClick={probarBot} loading={probando}>
+            {probando ? "Llamando…" : "📞 Probar llamada"}
+          </Button>
+          {pruebaResultado && (
+            <span
+              className={`text-[11px] ${
+                pruebaResultado.startsWith("Te está timbrando") ? "text-ok-text" : "text-danger-text"
+              }`}
+            >
+              {pruebaResultado}
+            </span>
+          )}
           <Button variant="secondary" onClick={() => addNode("menu")}>
             + Menú de audio
           </Button>
