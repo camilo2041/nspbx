@@ -440,6 +440,31 @@ class QueueTtsRequest(BaseModel):
     provider: str = Field(default="edge", pattern="^(edge|elevenlabs|deepgram)$")
 
 
+class RingGroupBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    number: str = Field(..., min_length=1, max_length=30)
+    members: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class RingGroupCreate(RingGroupBase):
+    pass
+
+
+class RingGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    number: Optional[str] = None
+    members: Optional[list[str]] = None
+    enabled: Optional[bool] = None
+
+
+class RingGroupOut(RingGroupBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+
+
 class QueueOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -507,3 +507,19 @@ class PriorityNumber(Base):
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
+class RingGroup(Base):
+    """Grupo de timbrado: un número que timbra a VARIAS extensiones a la
+    vez y contesta la primera. Se implementa con el `callgroup` del
+    directorio + el dial-string `group/<nombre>@domain` de FreeSWITCH (ver
+    config_generator.build_directory_xml y _append_ring_group_routes)."""
+
+    __tablename__ = "ring_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    number: Mapped[str] = mapped_column(String(30), unique=True)  # número que marcan
+    members: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: ["1000","1001"]
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+

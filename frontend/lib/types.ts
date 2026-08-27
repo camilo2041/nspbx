@@ -448,6 +448,15 @@ export interface PriorityNumber {
   created_at: string;
 }
 
+export interface RingGroup {
+  id: number;
+  name: string;
+  number: string;
+  members: string[];
+  enabled: boolean;
+  created_at: string;
+}
+
 export interface ActiveChannel {
   uuid: string;
   direction: string;

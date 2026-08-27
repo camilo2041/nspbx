@@ -29,6 +29,7 @@ from app.api import (
     outbound_routes as outbound_routes_api,
     priority_numbers as priority_numbers_api,
     queues as queues_api,
+    ring_groups as ring_groups_api,
     settings as settings_api,
     system,
     time_conditions as time_conditions_api,
@@ -310,6 +311,7 @@ app.include_router(
 )
 app.include_router(campaigns.router, **_con(permissions.CAMPANAS_GESTIONAR))
 app.include_router(queues_api.router, **_con(permissions.COLAS_GESTIONAR))
+app.include_router(ring_groups_api.router, **_con(permissions.COLAS_GESTIONAR))
 app.include_router(appointments_api.router)  # permisos por endpoint: el agente de IA entra acá
 app.include_router(calls_api.router)  # permisos por endpoint: /fs/cdr lo llama FreeSWITCH
 app.include_router(voicemail_api.router)  # permisos por endpoint: cada uno su buzón

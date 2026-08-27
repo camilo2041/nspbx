@@ -18,8 +18,24 @@ def _dashed_phone(phone: str) -> str:
     return "".join(ch for ch in phone if ch.isdigit())
 
 
-def build_directory_xml(extensions: list) -> str:
-    """Genera la seccion <section name='directory'> con las extensiones."""
+def build_directory_xml(extensions: list, ring_groups: list | None = None) -> str:
+    """Genera la seccion <section name='directory'> con las extensiones.
+
+    Si una extensión pertenece a un grupo de timbrado (RingGroup), se le
+    setea la variable `callgroup` con el nombre del grupo — es lo que usa el
+    dial-string `group/<nombre>@domain` de FreeSWITCH para timbrar a todos
+    los miembros a la vez (ver _append_ring_group_routes)."""
+    callgroup_por_ext: dict[str, str] = {}
+    for g in ring_groups or []:
+        if not g.enabled:
+            continue
+        try:
+            miembros = json.loads(g.members or "[]")
+        except (ValueError, TypeError):
+            miembros = []
+        for m in miembros:
+            callgroup_por_ext[str(m).strip()] = g.name
+
     root = _e("document", attrib={"type": "freeswitch/xml"})
     section = ET.SubElement(root, "section", attrib={"name": "directory"})
     domain = ET.SubElement(
@@ -41,6 +57,9 @@ def build_directory_xml(extensions: list) -> str:
             ET.SubElement(v, "variable", attrib={"name": "effective_caller_id_name", "value": ext.caller_id_name})
         ET.SubElement(v, "variable", attrib={"name": "effective_caller_id_number", "value": ext.number})
         ET.SubElement(v, "variable", attrib={"name": "user_context", "value": "default"})
+        cg = callgroup_por_ext.get(ext.number)
+        if cg:
+            ET.SubElement(v, "variable", attrib={"name": "callgroup", "value": cg})
     return ET.tostring(root, encoding="unicode")
 
 
@@ -166,6 +185,22 @@ def _append_forward_hook(context: ET.Element, extensions: list) -> None:
         "action",
         attrib={"application": "transfer", "data": "${db(select/forward/${destination_number})} XML default"},
     )
+
+
+def _append_ring_group_routes(context: ET.Element, ring_groups: list | None) -> None:
+    """Número de cada grupo de timbrado → `bridge group/<nombre>@domain`:
+    FreeSWITCH timbra a todas las extensiones con ese `callgroup` a la vez y
+    contesta la primera (ver build_directory_xml)."""
+    if not ring_groups:
+        return
+    for g in ring_groups:
+        if not g.enabled:
+            continue
+        extension = ET.SubElement(context, "extension", attrib={"name": f"ring_group_{g.name}", "continue": "false"})
+        condition = ET.SubElement(extension, "condition", attrib={"field": "destination_number", "expression": f"^{g.number}$"})
+        ET.SubElement(condition, "action", attrib={"application": "log", "data": f"Grupo de timbrado '{g.name}'"})
+        ET.SubElement(condition, "action", attrib={"application": "set", "data": "hangup_after_bridge=true"})
+        ET.SubElement(condition, "action", attrib={"application": "bridge", "data": f"group/{g.name}@$${{domain}}"})
 
 
 def _append_local_extension_route(context: ET.Element, extensions: list) -> None:
@@ -748,6 +783,7 @@ def build_dialplan_xml(
     priority_announce_text: str | None = None,
     time_conditions: list | None = None,
     time_groups: list | None = None,
+    ring_groups: list | None = None,
 ) -> str:
     """Genera la seccion <section name='dialplan'> completa."""
     root = _e("document", attrib={"type": "freeswitch/xml"})
@@ -766,6 +802,7 @@ def build_dialplan_xml(
     _append_dnd_hook(context, extensions)
     _append_forward_hook(context, extensions)
     _append_local_extension_route(context, extensions)
+    _append_ring_group_routes(context, ring_groups)
     _append_voicebot_routes(section, context, bots, queues, record_all)
     _append_queue_routes(context, queues or [], record_all, priority_announce_text)
 

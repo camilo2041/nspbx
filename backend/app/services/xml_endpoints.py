@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # docstring; antes vivía acá y ese otro endpoint quedó sin protección.
 from app.core.auth import verificar_secreto_fs as _verificar_secreto
 from app.core.database import get_session
-from app.models import BlacklistNumber, Extension, InboundRoute, OutboundRoute, PriorityNumber, Queue, SystemSettings, TimeCondition, TimeGroup, Trunk, VoiceBot
+from app.models import BlacklistNumber, Extension, InboundRoute, OutboundRoute, PriorityNumber, Queue, RingGroup, SystemSettings, TimeCondition, TimeGroup, Trunk, VoiceBot
 from app.services.config_generator import build_dialplan_xml, build_directory_xml
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,9 @@ router = APIRouter(tags=["freeswitch-xml"])
 async def fs_directory(session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(Extension).where(Extension.enabled.is_(True)))
     extensions = result.scalars().all()
-    xml = build_directory_xml(extensions)
+    rg_result = await session.execute(select(RingGroup))
+    ring_groups = rg_result.scalars().all()
+    xml = build_directory_xml(extensions, ring_groups)
     return Response(content=xml, media_type="text/xml")
 
 
@@ -47,6 +49,8 @@ async def fs_dialplan(session: AsyncSession = Depends(get_session)):
     time_conditions = tc_result.scalars().all()
     tg_result = await session.execute(select(TimeGroup))
     time_groups = tg_result.scalars().all()
+    rg_result = await session.execute(select(RingGroup))
+    ring_groups = rg_result.scalars().all()
     settings_row = await session.get(SystemSettings, 1)
     record_all = bool(settings_row and settings_row.record_all_calls)
     max_call_minutes = settings_row.max_call_duration_minutes if settings_row else 60
@@ -67,6 +71,7 @@ async def fs_dialplan(session: AsyncSession = Depends(get_session)):
         priority_announce_text=priority_announce_text,
         time_conditions=time_conditions,
         time_groups=time_groups,
+        ring_groups=ring_groups,
     )
     return Response(content=xml, media_type="text/xml")
 

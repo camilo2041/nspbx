@@ -174,6 +174,19 @@ const GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/ring-groups",
+        label: "Grupos de timbrado",
+        permiso: PERMISOS.colas,
+        icon: icon(
+          <>
+            <circle cx="6" cy="12" r="2" />
+            <circle cx="12" cy="6" r="2" />
+            <circle cx="18" cy="12" r="2" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12h12" />
+          </>
+        ),
+      },
+      {
         href: "/queues",
         label: "Colas",
         permiso: PERMISOS.colas,
